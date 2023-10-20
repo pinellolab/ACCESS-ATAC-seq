@@ -6,8 +6,6 @@ import numpy as np
 import argparse
 import pyranges as pr
 import pysam
-import pyBigWig
-from tqdm import tqdm
 import logging
 
 
@@ -19,7 +17,7 @@ logging.basicConfig(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='help',
+        description='This script generates BigWig file from a BAM file',
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -39,44 +37,97 @@ def parse_args():
                         default=None,
                         help='If specified all output files will be written to that directory. Default: the current working directory')
         
-    parser.add_argument('-n', '--name',
+    parser.add_argument('--name',
                         type=str,
                         default="counts",
                         help="Names for output file. Default: counts")
     
-    parser.add_argument('-a', '--acc',
+    parser.add_argument('--acc',
                         type=str,
                         choices=['cut', 'edit', 'both'],
                         default="both",
-                        help="How to quantify chromatin accessibility. Default: both")    
-    
-    
-    parser.add_argument('-ref', '--ref_genome', 
-                        type=str, 
-                        default=None,
-                        help='Reference genome. Default: None')
-    
-    parser.add_argument('-tb', '--to_bigwig', 
-                        action='store_true',
-                        help=('Convert wig to bigwig file\n'
-                              'To do this, wigtobigwig needs to be installed\n'
-                              'Default: False'))
+                        help="How to quantify chromatin accessibility. Default: both") 
     
     parser.add_argument('--chrom_size_file',
                         type=str,
                         default=None,
-                        help=('A file containing chromosome size. Used to convert wig to bigwig'))
+                        help="File including chromosome size. Default: None")     
         
     return parser.parse_args()
 
+
+def get_cut_sites(chrom: str = None, 
+                  start: int = None, 
+                  end: int = None, 
+                  bam: pysam.Samfile = None):
+    """
+    Get Tn5 cutting sites from specific genomic region
+
+    Parameters
+    ----------
+    chrom : str
+        Chromosome anme
+    start : int
+        Start position
+    end : int
+        End position
+    bam : pysam.Samfile
+        BAM file
+    """
+    
+    signal = np.zeros(shape=(end - start))
+    
+    for read in bam.fetch(reference=chrom, start=start, end=end):
+        if read.is_reverse:
+            cut_site = read.reference_end - 5
+        else:
+            cut_site = read.reference_start + 4
+                    
+        if start <= cut_site < end:
+            signal[cut_site - start] += 1
+        
+    return signal
+
+
+def get_edit_sites(chrom: str = None, 
+                  start: int = None, 
+                  end: int = None, 
+                  bam: pysam.Samfile = None):
+    """
+    Get Ddda editing sites from specific genomic region
+
+    Parameters
+    ----------
+    chrom : str
+        Chromosome anme
+    start : int
+        Start position
+    end : int
+        End position
+    bam : pysam.Samfile
+        BAM file
+    """
+    
+    signal = np.zeros(shape=(end - start))
+    
+    for read in bam.fetch(reference=chrom, start=start, end=end):
+        refer_seq = read.get_reference_sequence().upper()
+        query_seq = read.query_sequence.upper()
+        
+        if len(refer_seq) == len(query_seq):
+            for i in range(len(query_seq)):
+                if (refer_seq[i] == 'C' and query_seq[i] == 'T') or (refer_seq[i] == 'G' and query_seq[i] == 'A'):
+                    if start <= read.reference_start + i < end:
+                        signal[read.reference_start + i - start] += 1  
+    
+    return signal
+    
 
 def main():
     args = parse_args()
     
     bam = pysam.Samfile(args.bam_file, "rb")
     
-    bam_chrom_info = dict(zip(bam.references, bam.lengths))
-
     logging.info('Reading bed file')    
     grs = pr.read_bed(args.bed_file)
     logging.info(f'Total of {len(grs)} regions')
@@ -84,64 +135,35 @@ def main():
     if args.outdir is None:
         args.outdir = os.getcwd()
     
+    logging.info(f'Counting {args.acc} sites')
     output_fname = os.path.join(args.outdir, "{}.wig".format(args.name))
     
-    logging.info(f'Counting {args.acc} sites')
+    # Open a new bigwig file for writing
     with open(output_fname, "a") as f:
-        for chrom, start, end in tqdm(zip(grs.Chromosome, grs.Start, grs.End)):            
-            signal = np.zeros(shape=(end - start), dtype=np.int16)
-            # get cut site
+        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             if args.acc == 'cut':
-                # for each regions, fetch the reads and get Tn5 cut site
-                # BAM file uses 1-based coordinate system
-                for read in bam.fetch(reference=chrom, start=start, end=end):
-                    if read.is_reverse:
-                        cut_site = read.reference_end - 5
-                    else:
-                        cut_site = read.reference_start + 4
-                    
-                    if start <= cut_site < end:
-                        signal[cut_site - start] += 1
-                        
-            elif args.acc == 'edit':       
-                # get edit site  
-                for read in bam.fetch(reference=chrom, start=start, end=end):
-                    refer_seq = read.get_reference_sequence().upper()
-                    query_seq = read.query_sequence.upper()
-                    
-                    if len(refer_seq) == len(query_seq):
-                        for i in range(len(query_seq)):
-                            if (refer_seq[i] == 'C' and query_seq[i] == 'T') or (refer_seq[i] == 'G' and query_seq[i] == 'A'):
-                                if start <= read.reference_start + i < end:
-                                    signal[read.reference_start + i - start] += 1     
+                signal = get_cut_sites(chrom=chrom, start=start, end=end, bam=bam)
                 
-                # for pileupcolumn in bam.pileup(reference=chrom, start=start, end=end): 
-                #     for read in pileupcolumn.pileups:
-                #         if not read.is_del and not read.is_refskip:
-                #             refer_seq = read.alignment.get_reference_sequence().upper()
-                #             query_seq = read.alignment.query_sequence.upper()
-            
-                #             if len(refer_seq) == len(query_seq):
-                #                 refer_base = refer_seq[read.query_position]
-                #                 query_base = query_seq[read.query_position]
-                                
-                #                 if (refer_base == 'C' and query_base == 'T') or (refer_base == 'G' and query_base == 'A'):
-                #                     if start <= pileupcolumn.pos < end:
-                #                         signal[pileupcolumn.pos - start] += 1
-                             
-            
-            #signal = cut_sites + edit_sites
+            elif args.acc == 'edit':
+                signal = get_edit_sites(chrom=chrom, start=start, end=end, bam=bam)
+                
+            elif args.acc == 'both':
+                signal_cut = get_cut_sites(chrom=chrom, start=start, end=end, bam=bam)
+                signal_edit = get_edit_sites(chrom=chrom, start=start, end=end, bam=bam)
+                signal = signal_cut + signal_edit
+                
             f.write(f'fixedStep chrom={chrom} start={start+1} step=1\n')
             f.write('\n'.join(str(e) for e in signal))
             f.write('\n')
 
-    if args.to_bigwig:
-        bw_filename = os.path.join(args.outdir, "{}.bw".format(args.name))
-        os.system(" ".join(["wigToBigWig", 
-                            output_fname, 
-                            args.chrom_size_file, 
-                            bw_filename, "-verbose=0"]))
-        os.remove(output_fname)
+    # convert to bigwig file
+    bw_filename = os.path.join(args.outdir, "{}.bw".format(args.name))
+    os.system(" ".join(["wigToBigWig", 
+                        output_fname, 
+                        args.chrom_size_file, 
+                        bw_filename, 
+                        "-verbose=0"]))
+    os.remove(output_fname)
 
 if __name__ == '__main__':
     main()
