@@ -22,31 +22,38 @@ def parse_args():
     )
 
     # Required parameters
-    parser.add_argument('--bed_file', 
-                        type=str, 
-                        default=None,
-                        help='Input bed file containing genomic regions. Default: None')
-    
     parser.add_argument('--bam_file', 
                         type=str, 
                         default=None,
-                        help='Input bam file containing the aligned reads. Default: None')
-
+                        help=('BAM file containing the aligned reads. \n'
+                              'Default: None'))
+    
+    parser.add_argument('--bed_file', 
+                        type=str, 
+                        default=None,
+                        help=('BED file containing genomic regions for generating signal. \n'
+                             'If none, will use the whole genome as input regions. \n'
+                             'Default: None'))
+    
     parser.add_argument('--outdir', 
                         type=str, 
                         default=None,
-                        help='If specified all output files will be written to that directory. Default: the current working directory')
+                        help=('If specified all output files will be written to that directory. \n'
+                              'Default: the current working directory'))
         
     parser.add_argument('--name',
                         type=str,
-                        default="counts",
-                        help="Names for output file. Default: counts")
+                        default='counts',
+                        help=('Names for output file. Default: counts'))
     
     parser.add_argument('--acc',
                         type=str,
                         choices=['cut', 'edit', 'both'],
-                        default="both",
-                        help="How to quantify chromatin accessibility. Default: both") 
+                        default='both',
+                        help=('How to quantify chromatin accessibility.\n'
+                              'cut: only use Tn5 cutting sites\n'
+                              'edit: only use Ddda editting sites\n'
+                              'both: use both Tn5 cutting and Ddda editing sites'))
     
     parser.add_argument('--chrom_size_file',
                         type=str,
@@ -59,14 +66,14 @@ def parse_args():
 def get_cut_sites(chrom: str = None, 
                   start: int = None, 
                   end: int = None, 
-                  bam: pysam.Samfile = None):
+                  bam: pysam.Samfile = None) -> np.array:
     """
     Get Tn5 cutting sites from specific genomic region
 
     Parameters
     ----------
     chrom : str
-        Chromosome anme
+        Chromosome name
     start : int
         Start position
     end : int
@@ -92,7 +99,7 @@ def get_cut_sites(chrom: str = None,
 def get_edit_sites(chrom: str = None, 
                   start: int = None, 
                   end: int = None, 
-                  bam: pysam.Samfile = None):
+                  bam: pysam.Samfile = None) -> np.array:
     """
     Get Ddda editing sites from specific genomic region
 
@@ -123,13 +130,42 @@ def get_edit_sites(chrom: str = None,
     return signal
     
 
+def get_chrom_size(bam: pysam.Samfile) -> pr.PyRanges:
+    """
+    Extract chromsome size from the input bam file
+
+    Parameters
+    ----------
+    bam : pysam.Samfile
+        _description_
+
+    Returns
+    -------
+    pr.PyRanges
+        _description_
+    """
+
+    chromosome = list(bam.references)
+    start = [1] * len(chromosome)
+    end = list(bam.lengths)
+
+    grs = pr.from_dict({"Chromosome": chromosome, "Start": start, "End": end})
+    
+    return grs
+
+
 def main():
     args = parse_args()
     
     bam = pysam.Samfile(args.bam_file, "rb")
     
-    logging.info('Reading bed file')    
-    grs = pr.read_bed(args.bed_file)
+    if args.bed_file:
+        logging.info(f'Loading genomic regions from {args.bed_file}')
+        grs = pr.read_bed(args.bed_file)
+    else:
+        logging.info(f'Using whole genome')
+        grs = get_chrom_size(bam=bam)
+    
     logging.info(f'Total of {len(grs)} regions')
     
     if args.outdir is None:
