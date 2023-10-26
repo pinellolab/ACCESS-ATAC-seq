@@ -48,24 +48,43 @@ def parse_args():
     
     parser.add_argument('--acc',
                         type=str,
-                        choices=['cut', 'edit', 'both'],
+                        choices=['atac', 'access', 'both'],
                         default='both',
                         help=('How to quantify chromatin accessibility.\n'
-                              'cut: only use Tn5 cutting sites\n'
-                              'edit: only use Ddda editting sites\n'
+                              'atac: only use Tn5 cutting sites\n'
+                              'access: only use Ddda editting sites\n'
                               'both: use both Tn5 cutting and Ddda editing sites'))
+    
+    parser.add_argument('--forward_shift',
+                        type=int,
+                        default=4)
+    parser.add_argument('--reverse_shift',
+                        type=int,
+                        default=4)
     
     parser.add_argument('--chrom_size_file',
                         type=str,
                         default=None,
-                        help="File including chromosome size. Default: None")     
-        
+                        help="File including chromosome size. Default: None")
+    
+    parser.add_argument('--remove_secondary',
+                        action='store_true',
+                        help=('If set, will remove secondary alignments. Default: False')) 
+    
+    parser.add_argument('--remove_supplementary',
+                        action='store_true',
+                        help=('If set, will remove supplementary alignments. Default: False'))
+
     return parser.parse_args()
 
 
-def get_cut_sites(chrom: str = None, 
+def get_atac_sites(chrom: str = None, 
                   start: int = None, 
                   end: int = None, 
+                  forward_shift: int = None,
+                  reverse_shift: int = None,
+                  remove_secondary: bool = False,
+                  remove_supplementary: bool = False,
                   bam: pysam.Samfile = None) -> np.array:
     """
     Get Tn5 cutting sites from specific genomic region
@@ -85,10 +104,21 @@ def get_cut_sites(chrom: str = None,
     signal = np.zeros(shape=(end - start))
     
     for read in bam.fetch(reference=chrom, start=start, end=end):
+        # check read quality
+        
+        # check if read is secondary
+        if remove_secondary and read.is_secondary:
+            continue
+        
+        # check if read is supplementary
+        if remove_supplementary and read.is_supplementary:
+            continue
+        
+        # cut counts
         if read.is_reverse:
-            cut_site = read.reference_end - 5
+            cut_site = read.reference_end - reverse_shift
         else:
-            cut_site = read.reference_start + 4
+            cut_site = read.reference_start + forward_shift
                     
         if start <= cut_site < end:
             signal[cut_site - start] += 1
@@ -99,6 +129,8 @@ def get_cut_sites(chrom: str = None,
 def get_edit_sites(chrom: str = None, 
                   start: int = None, 
                   end: int = None, 
+                  remove_secondary: bool = False,
+                  remove_supplementary: bool = False,
                   bam: pysam.Samfile = None) -> np.array:
     """
     Get Ddda editing sites from specific genomic region
@@ -118,6 +150,14 @@ def get_edit_sites(chrom: str = None,
     signal = np.zeros(shape=(end - start))
     
     for read in bam.fetch(reference=chrom, start=start, end=end):
+        # check if read is secondary
+        if remove_secondary and read.is_secondary:
+            continue
+        
+        # check if read is supplementary
+        if remove_supplementary and read.is_supplementary:
+            continue
+        
         refer_seq = read.get_reference_sequence().upper()
         query_seq = read.query_sequence.upper()
         
@@ -146,7 +186,7 @@ def get_chrom_size(bam: pysam.Samfile) -> pr.PyRanges:
     """
 
     chromosome = list(bam.references)
-    start = [1] * len(chromosome)
+    start = [0] * len(chromosome)
     end = list(bam.lengths)
 
     grs = pr.from_dict({"Chromosome": chromosome, "Start": start, "End": end})
@@ -177,15 +217,39 @@ def main():
     # Open a new bigwig file for writing
     with open(output_fname, "a") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            if args.acc == 'cut':
-                signal = get_cut_sites(chrom=chrom, start=start, end=end, bam=bam)
+            if args.acc == 'atac':
+                signal = get_atac_sites(chrom=chrom, 
+                                       start=start, 
+                                       end=end, bam=bam, 
+                                       forward_shift=args.forward_shift,
+                                       reverse_shift=args.reverse_shift,
+                                       remove_secondary=args.remove_secondary,
+                                       remove_supplementary=args.remove_supplementary)
                 
-            elif args.acc == 'edit':
-                signal = get_edit_sites(chrom=chrom, start=start, end=end, bam=bam)
+            elif args.acc == 'access':
+                signal = get_edit_sites(chrom=chrom, 
+                                        start=start, 
+                                        end=end, 
+                                        bam=bam,
+                                        remove_secondary=args.remove_secondary,
+                                        remove_supplementary=args.remove_supplementary)
                 
             elif args.acc == 'both':
-                signal_cut = get_cut_sites(chrom=chrom, start=start, end=end, bam=bam)
-                signal_edit = get_edit_sites(chrom=chrom, start=start, end=end, bam=bam)
+                signal_cut = get_atac_sites(chrom=chrom, 
+                                           start=start, 
+                                           end=end, bam=bam, 
+                                           forward_shift=args.forward_shift,
+                                           reverse_shift=args.reverse_shift,
+                                           remove_secondary=args.remove_secondary,
+                                           remove_supplementary=args.remove_supplementary)
+                
+                signal_edit = get_edit_sites(chrom=chrom, 
+                                             start=start, 
+                                             end=end, 
+                                             bam=bam,
+                                             remove_secondary=args.remove_secondary,
+                                             remove_supplementary=args.remove_supplementary)
+                
                 signal = signal_cut + signal_edit
                 
             f.write(f'fixedStep chrom={chrom} start={start+1} step=1\n')
