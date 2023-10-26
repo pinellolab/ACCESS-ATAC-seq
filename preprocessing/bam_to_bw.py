@@ -170,6 +170,72 @@ def get_edit_sites(chrom: str = None,
     return signal
     
 
+def get_edit_fraction(chrom: str = None, 
+                  start: int = None, 
+                  end: int = None, 
+                  remove_secondary: bool = False,
+                  remove_supplementary: bool = False,
+                  bam: pysam.Samfile = None) -> np.array:
+    """
+    Get Ddda editing sites from specific genomic region
+
+    Parameters
+    ----------
+    chrom : str
+        Chromosome anme
+    start : int
+        Start position
+    end : int
+        End position
+    bam : pysam.Samfile
+        BAM file
+    """
+    
+    edit_count = np.zeros(shape=(end - start))
+    ref_count = np.zeros(shape=(end - start))
+    
+    for read in bam.fetch(reference=chrom, start=start, end=end):
+        # check if read is secondary
+        if remove_secondary and read.is_secondary:
+            continue
+        
+        # check if read is supplementary
+        if remove_supplementary and read.is_supplementary:
+            continue
+        
+        refer_seq = read.get_reference_sequence().upper()
+        query_seq = read.query_sequence.upper()
+        
+        if len(refer_seq) == len(query_seq):
+            for i in range(len(query_seq)):
+                if read.reference_start + i < start or read.reference_start + i >= end:
+                    continue
+                
+                ref_count[read.reference_start + i - start] += 1
+                
+                if (refer_seq[i] == 'C' and query_seq[i] == 'T') or (refer_seq[i] == 'G' and query_seq[i] == 'A'):
+                    edit_count[read.reference_start + i - start] += 1  
+                
+                # if refer_seq[i] == 'C':
+                #     ref_count[read.reference_start + i - start] += 1
+                    
+                #     if query_seq[i] == 'T':
+                #         edit_count[read.reference_start + i - start] += 1
+                        
+                # if refer_seq[i] == 'G':
+                #     ref_count[read.reference_start + i - start] += 1
+                    
+                #     if query_seq[i] == 'A':
+                #         edit_count[read.reference_start + i - start] += 1
+                        
+                
+    edit_fraction = edit_count / ref_count
+    edit_fraction[edit_fraction == np.inf] = 0
+    edit_fraction[np.isnan(edit_fraction)] = 0
+                    
+    return edit_fraction
+
+
 def get_chrom_size(bam: pysam.Samfile) -> pr.PyRanges:
     """
     Extract chromsome size from the input bam file
@@ -227,7 +293,7 @@ def main():
                                        remove_supplementary=args.remove_supplementary)
                 
             elif args.acc == 'access':
-                signal = get_edit_sites(chrom=chrom, 
+                signal = get_edit_fraction(chrom=chrom, 
                                         start=start, 
                                         end=end, 
                                         bam=bam,
