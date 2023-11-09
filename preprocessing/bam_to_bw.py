@@ -58,6 +58,7 @@ def parse_args():
     parser.add_argument('--forward_shift',
                         type=int,
                         default=4)
+    
     parser.add_argument('--reverse_shift',
                         type=int,
                         default=4)
@@ -78,7 +79,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_atac_sites(chrom: str = None, 
+def get_atac_counts(chrom: str = None, 
                   start: int = None, 
                   end: int = None, 
                   forward_shift: int = None,
@@ -126,7 +127,7 @@ def get_atac_sites(chrom: str = None,
     return signal
 
 
-def get_edit_sites(chrom: str = None, 
+def get_edit_counts(chrom: str = None, 
                   start: int = None, 
                   end: int = None, 
                   remove_secondary: bool = False,
@@ -215,18 +216,6 @@ def get_edit_fraction(chrom: str = None,
                 
                 if (refer_seq[i] == 'C' and query_seq[i] == 'T') or (refer_seq[i] == 'G' and query_seq[i] == 'A'):
                     edit_count[read.reference_start + i - start] += 1  
-                
-                # if refer_seq[i] == 'C':
-                #     ref_count[read.reference_start + i - start] += 1
-                    
-                #     if query_seq[i] == 'T':
-                #         edit_count[read.reference_start + i - start] += 1
-                        
-                # if refer_seq[i] == 'G':
-                #     ref_count[read.reference_start + i - start] += 1
-                    
-                #     if query_seq[i] == 'A':
-                #         edit_count[read.reference_start + i - start] += 1
                         
                 
     edit_fraction = edit_count / ref_count
@@ -284,7 +273,7 @@ def main():
     with open(output_fname, "a") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             if args.acc == 'atac':
-                signal = get_atac_sites(chrom=chrom, 
+                signal = get_atac_counts(chrom=chrom, 
                                        start=start, 
                                        end=end, bam=bam, 
                                        forward_shift=args.forward_shift,
@@ -293,7 +282,7 @@ def main():
                                        remove_supplementary=args.remove_supplementary)
                 
             elif args.acc == 'access':
-                signal = get_edit_fraction(chrom=chrom, 
+                signal = get_edit_counts(chrom=chrom, 
                                         start=start, 
                                         end=end, 
                                         bam=bam,
@@ -301,7 +290,7 @@ def main():
                                         remove_supplementary=args.remove_supplementary)
                 
             elif args.acc == 'both':
-                signal_cut = get_atac_sites(chrom=chrom, 
+                signal_cut = get_atac_counts(chrom=chrom, 
                                            start=start, 
                                            end=end, bam=bam, 
                                            forward_shift=args.forward_shift,
@@ -309,7 +298,7 @@ def main():
                                            remove_secondary=args.remove_secondary,
                                            remove_supplementary=args.remove_supplementary)
                 
-                signal_edit = get_edit_sites(chrom=chrom, 
+                signal_edit = get_edit_counts(chrom=chrom, 
                                              start=start, 
                                              end=end, 
                                              bam=bam,
