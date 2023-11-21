@@ -17,7 +17,7 @@ logging.basicConfig(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='This script generates BigWig file from a BAM file',
+        description='This script generates footprint plot using BW file and BED file',
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -52,30 +52,6 @@ def parse_args():
                         help=('Names for output file. Default: counts'))
     
     return parser.parse_args()
-
-
-def get_chrom_size(bam: pysam.Samfile) -> pr.PyRanges:
-    """
-    Extract chromsome size from the input bam file
-
-    Parameters
-    ----------
-    bam : pysam.Samfile
-        _description_
-
-    Returns
-    -------
-    pr.PyRanges
-        _description_
-    """
-
-    chromosome = list(bam.references)
-    start = [1] * len(chromosome)
-    end = list(bam.lengths)
-
-    grs = pr.from_dict({"Chromosome": chromosome, "Start": start, "End": end})
-    
-    return grs
 
 
 def main():
