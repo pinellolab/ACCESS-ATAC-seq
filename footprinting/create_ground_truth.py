@@ -1,7 +1,5 @@
 import os
 import pyranges as pr
-import numpy as np
-import pandas as pd
 
 import argparse
 import logging
@@ -65,6 +63,8 @@ def main():
     chip_peak_grs = pr.read_bed(args.chip_seq_peaks)
     motif_match_grs = pr.read_bed(args.motif_match)
 
+    motif_match_grs.Name = [name.split('.')[2] for name in motif_match_grs.Name]
+
     # subset the moti matching results to select candidate CTCF binding sites
     motif_match_grs = motif_match_grs[motif_match_grs.Name == args.motif_name]
 
@@ -76,17 +76,17 @@ def main():
         chip_peak_grs, strandedness=False, invert=True
     )
 
-    motif_match_tp_grs.Name = [
-        args.motif_name + ".Pos." + str(i) for i in range(len(motif_match_tp_grs))
-    ]
-    motif_match_tn_grs.Name = [
-        args.motif_name + ".Neg." + str(i) for i in range(len(motif_match_tn_grs))
-    ]
+    # motif_match_tp_grs.Name = [
+    #     args.motif_name + ".Pos." + str(i) for i in range(len(motif_match_tp_grs))
+    # ]
+    # motif_match_tn_grs.Name = [
+    #     args.motif_name + ".Neg." + str(i) for i in range(len(motif_match_tn_grs))
+    # ]
     
-    motif_match_grs = pr.concat([motif_match_tp_grs, motif_match_tn_grs])
+    # motif_match_grs = pr.concat([motif_match_tp_grs, motif_match_tn_grs])
     
-    out_filename = os.path.join(args.outdir, "{}.bed".format(args.out_name))
-    motif_match_grs.to_bed(out_filename)
+    motif_match_tp_grs.to_bed(os.path.join(args.outdir, "{}.Pos.bed".format(args.out_name)))
+    motif_match_tn_grs.to_bed(os.path.join(args.outdir, "{}.Neg.bed".format(args.out_name)))
 
 
 if __name__ == "__main__":
