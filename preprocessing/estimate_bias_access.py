@@ -109,15 +109,14 @@ def main():
                     
     # Normalize the bias table
     total = sum(kmer_dict.values())
-    # normalize the bias
     for kmer in kmer_dict.keys():
-        kmer_dict[kmer] = kmer_dict[kmer] / total 
+        kmer_dict[kmer] = round(kmer_dict[kmer] / total, 6) 
     
     # Write the dictionary to a text file
     output_filename = os.path.join(args.out_dir, "{}.txt".format(args.out_name))
     with open(output_filename, 'w') as f:
         for key, value in kmer_dict.items():
-            f.write(f'{key}: {value}\n')
+            f.write(f'{key} \t {value}\n')
 
 if __name__ == "__main__":
     main()

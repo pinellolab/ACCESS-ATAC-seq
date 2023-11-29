@@ -27,7 +27,7 @@ def parse_args():
             "BED file containing ChIP-seq peaks for a specific TF. \n" "Default: None"
         ),
     )
-
+    
     parser.add_argument(
         "--motif_match",
         type=str,
@@ -63,9 +63,12 @@ def main():
     chip_peak_grs = pr.read_bed(args.chip_seq_peaks)
     motif_match_grs = pr.read_bed(args.motif_match)
 
+    # remove chrY
+    motif_match_grs = motif_match_grs[motif_match_grs.Chromosome != 'chrY']
+
     motif_match_grs.Name = [name.split('.')[2] for name in motif_match_grs.Name]
 
-    # subset the moti matching results to select candidate CTCF binding sites
+    # subset the moti matching results to select candidate TF binding sites
     motif_match_grs = motif_match_grs[motif_match_grs.Name == args.motif_name]
 
     # overlap with ChIP-seq peaks to get labels

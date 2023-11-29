@@ -3,9 +3,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import os
-import numpy as np
 import argparse
-import pandas as pd
 import pyranges as pr
 import pysam
 import logging

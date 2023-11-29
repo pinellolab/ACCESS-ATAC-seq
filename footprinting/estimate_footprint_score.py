@@ -34,7 +34,7 @@ def parse_args():
         "--bed_file",
         type=str,
         default=None,
-        help=("BED file containing predicted TF binding sites. \n" "Default: None"),
+        help=("BED file containing motif predicted binding sites. \n" "Default: None"),
     )
     
     parser.add_argument(
@@ -43,7 +43,7 @@ def parse_args():
     )
         
     parser.add_argument(
-        "--outdir",
+        "--out_dir",
         type=str,
         default=None,
         help=(
@@ -95,7 +95,7 @@ def main():
         
     # compute footprint score
     grs.score = np.divide((signal_left + signal_right), signal_center + 1)
-    out_filename = os.path.join(args.outdir, "{}.bed".format(args.out_name))
+    out_filename = os.path.join(args.out_dir, "{}.bed".format(args.out_name))
     grs.to_bed(out_filename)
     
     

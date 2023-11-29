@@ -43,7 +43,14 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--bed_file",
+        "--motif_file",
+        type=str,
+        default=None,
+        help=("BED file containing genomic regions for plotting. \n" "Default: None"),
+    )
+
+    parser.add_argument(
+        "--peak_file",
         type=str,
         default=None,
         help=("BED file containing genomic regions for plotting. \n" "Default: None"),
@@ -76,8 +83,13 @@ def parse_args():
 def main():
     args = parse_args()
 
-    logging.info(f"Loading genomic regions from {args.bed_file}")
-    grs = pr.read_bed(args.bed_file)
+    logging.info(f"Loading genomic regions from {args.motif_file}")
+    grs = pr.read_bed(args.motif_file)
+
+    if args.peak_file:
+        grs_peaks = pr.read_bed(args.peak_file)
+        grs = grs.overlap(grs_peaks, strandedness=False, invert=False)
+
     logging.info(f"Total of {len(grs)} regions")
 
     # extend regions
@@ -117,7 +129,7 @@ def main():
 
     signal = np.mean(signal, axis=0)
     df = get_motif_df(pwm)
-    
+
     logging.info("Plotting")
     start = -(window_size // 2)
     end = (window_size // 2) - 1
@@ -126,6 +138,16 @@ def main():
     plt.close("all")
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(x, signal)
+
+    ax.text(
+        0.15,
+        0.9,
+        "n = {}".format(len(grs)),
+        verticalalignment="bottom",
+        horizontalalignment="right",
+        transform=ax.transAxes,
+        fontweight="bold",
+    )
 
     ax.xaxis.set_ticks_position("bottom")
     ax.yaxis.set_ticks_position("left")
@@ -147,9 +169,9 @@ def main():
     ax.set_xlim(start, end)
     ax.set_ylim([min_signal, max_signal])
     ax.legend(loc="upper right", frameon=False)
-    ax.spines['bottom'].set_position(('outward', 70))
-    
-    ax = plt.axes([0.105, 0.085, 0.85, .2])
+    ax.spines["bottom"].set_position(("outward", 70))
+
+    ax = plt.axes([0.105, 0.085, 0.85, 0.2])
     logo = logomaker.Logo(df, ax=ax, show_spines=False, baseline_width=0)
     ax.set_xticks([])
     ax.set_yticks([])
