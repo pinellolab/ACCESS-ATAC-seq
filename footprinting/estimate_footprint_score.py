@@ -1,11 +1,12 @@
 import os
+import sys
 import pyBigWig
 import pyranges as pr
 import numpy as np
 
 import argparse
 import logging
-
+import pyfaidx
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -31,17 +32,37 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--bed_file",
+        "--pos_bed_file",
         type=str,
         default=None,
         help=("BED file containing motif predicted binding sites. \n" "Default: None"),
     )
-    
     parser.add_argument(
-        "--flanking_region", type=int, default=20, 
-        help=("Flanking regions used to estimate footprint score. Default: 20")
+        "--neg_bed_file",
+        type=str,
+        default=None,
+        help=("BED file containing motif predicted binding sites. \n" "Default: None"),
     )
-        
+
+    parser.add_argument(
+        "--extend",
+        type=int,
+        default=100,
+        help=("Flanking regions used to estimate footprint score. Default: 20"),
+    )
+
+    parser.add_argument(
+        "--peak_file",
+        type=str,
+        default=100,
+        help=("Flanking regions used to estimate footprint score. Default: 20"),
+    )
+    parser.add_argument(
+        "--ref_fasta",
+        type=str,
+        default=None,
+        help=("FASTA file containing reference genome. \n" "Default: None"),
+    )
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -64,40 +85,36 @@ def parse_args():
 
 def main():
     args = parse_args()
-    
-    grs = pr.read_bed(args.bed_file)
-    grs = grs.sort()
-    
-    # get left and right flanking regions
-    grs_left = grs.copy()
-    grs_left.Start = grs_left.Start - args.flanking_region
-    grs_left.End = grs_left.End - args.flanking_region
 
-    grs_right = grs.copy()
-    grs_right.Start = grs_right.Start + args.flanking_region
-    grs_right.End = grs_right.End + args.flanking_region
-    
+    grs_pos = pr.read_bed(args.pos_bed_file)
+    grs_neg = pr.read_bed(args.neg_bed_file)
+
+    grs_pos.Name = grs_pos.Name + '.Pos'
+    grs_neg.Name = grs_neg.Name + '.Neg'
+
+    grs = pr.concat([grs_pos, grs_neg])
+    grs = grs.sort()
+
+    grs_peak = pr.read_bed(args.peak_file)
+    grs = grs.overlap(grs_peak, strandedness=False, invert=False)
+
+    grs = grs.extend(args.extend)
     bw = pyBigWig.open(args.bw_file)
-    
+
+    pyf = pyfaidx.Fasta(args.ref_fasta)
+    grs = pr.genomicfeatures.genome_bounds(grs, chromsizes=pyf, clip=True)
+
     # compute signal in TF binding site center
-    signal_center = np.zeros(len(grs))
-    signal_left = np.zeros(len(grs))
-    signal_right = np.zeros(len(grs))
+    score = np.zeros(len(grs))
 
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
-        signal_center[i] = np.sum(bw.values(chrom, start, end))
-        
-    for i, (chrom, start, end) in enumerate(zip(grs_left.Chromosome, grs_left.Start, grs_left.End)):
-        signal_left[i] = np.sum(bw.values(chrom, start, end))
+        score[i] = np.sum(bw.values(chrom, start, end))
 
-    for i, (chrom, start, end) in enumerate(zip(grs_right.Chromosome, grs_right.Start, grs_right.End)):
-        signal_right[i] = np.sum(bw.values(chrom, start, end))
-        
     # compute footprint score
-    grs.score = np.divide((signal_left + signal_right), signal_center + 1)
+    grs.Score = score
     out_filename = os.path.join(args.out_dir, "{}.bed".format(args.out_name))
     grs.to_bed(out_filename)
-    
-    
+
+
 if __name__ == "__main__":
     main()
