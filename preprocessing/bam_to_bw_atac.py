@@ -34,7 +34,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--bed_file",
+        "--peak_file",
         type=str,
         default=None,
         help=(
@@ -43,7 +43,9 @@ def parse_args():
             "Default: None"
         ),
     )
-
+    parser.add_argument(
+        "--ext", type=int, default=50
+    )
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -118,9 +120,11 @@ def main():
 
     bam = pysam.Samfile(args.bam_file, "rb")
 
-    if args.bed_file:
-        logging.info(f"Loading genomic regions from {args.bed_file}")
-        grs = pr.read_bed(args.bed_file)
+    if args.peak_file:
+        logging.info(f"Loading genomic regions from {args.peak_file}")
+        grs = pr.read_bed(args.peak_file)
+        # grs = grs.extend(args.ext)
+        grs = grs.merge()
     else:
         logging.info(f"Using whole genome")
         grs = get_chrom_size_from_bam(bam=bam)

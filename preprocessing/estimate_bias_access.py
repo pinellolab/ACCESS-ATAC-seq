@@ -7,7 +7,7 @@ import argparse
 import pysam
 import logging
 from itertools import product
-
+import pyranges as pr
 from utils import get_chrom_size_from_bam, revcomp
 
 
@@ -27,6 +27,12 @@ def parse_args():
     # Required parameters
     parser.add_argument(
         "--bam_file",
+        type=str,
+        default=None,
+        help=("BAM file containing reads. \n" "Default: None"),
+    )
+    parser.add_argument(
+        "--bed_file",
         type=str,
         default=None,
         help=("BAM file containing reads. \n" "Default: None"),
@@ -65,7 +71,7 @@ def main():
     bam = pysam.Samfile(args.bam_file, "rb")
     fasta = pysam.FastaFile(args.ref_fasta)
 
-    grs = get_chrom_size_from_bam(bam=bam)
+    grs = pr.read_bed(args.bed_file)
     
     alphabet = ["A", "C", "G", "T"]
     kmer_comb = ["".join(e) for e in product(alphabet, repeat=args.k_nb)]
@@ -116,7 +122,7 @@ def main():
     output_filename = os.path.join(args.out_dir, "{}.txt".format(args.out_name))
     with open(output_filename, 'w') as f:
         for key, value in kmer_dict.items():
-            f.write(f'{key} \t {value}\n')
+            f.write(f'{key}\t{value}\n')
 
 if __name__ == "__main__":
     main()

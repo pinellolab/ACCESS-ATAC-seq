@@ -1,7 +1,23 @@
+import os
 import numpy as np
 import pandas as pd
 import pysam
 import pyranges as pr
+
+
+def wig_to_bw(wig_filename, bw_filename, chrom_size_file):
+    os.system(
+        " ".join(
+            [
+                "wigToBigWig",
+                wig_filename,
+                chrom_size_file,
+                bw_filename,
+                "-verbose=0",
+            ]
+        )
+    )
+    os.remove(wig_filename) 
 
 
 def revcomp(s):
