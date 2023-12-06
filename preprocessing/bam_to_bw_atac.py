@@ -17,6 +17,7 @@ logging.basicConfig(
 )
 
 from utils import get_chrom_size_from_bam
+from get_signal import get_raw_signal_atac
 
 
 def parse_args():
@@ -43,9 +44,7 @@ def parse_args():
             "Default: None"
         ),
     )
-    parser.add_argument(
-        "--ext", type=int, default=50
-    )
+    parser.add_argument("--ext", type=int, default=50)
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -77,44 +76,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_atac_counts(
-    chrom: str = None,
-    start: int = None,
-    end: int = None,
-    forward_shift: int = None,
-    reverse_shift: int = None,
-    bam: pysam.Samfile = None,
-) -> np.array:
-    """
-    Get Tn5 cutting sites from specific genomic region
-
-    Parameters
-    ----------
-    chrom : str
-        Chromosome name
-    start : int
-        Start position
-    end : int
-        End position
-    bam : pysam.Samfile
-        BAM file
-    """
-
-    signal = np.zeros(shape=(end - start))
-
-    for read in bam.fetch(reference=chrom, start=start, end=end):
-        # cut counts
-        if read.is_reverse:
-            cut_site = read.reference_end - reverse_shift
-        else:
-            cut_site = read.reference_start + forward_shift
-
-        if start <= cut_site < end:
-            signal[cut_site - start] += 1
-
-    return signal
-
-
 def main():
     args = parse_args()
 
@@ -136,7 +97,7 @@ def main():
     # Open a new bigwig file for writing
     with open(output_fname, "a") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal = get_atac_counts(
+            signal = get_raw_signal_atac(
                 chrom=chrom,
                 start=start,
                 end=end,

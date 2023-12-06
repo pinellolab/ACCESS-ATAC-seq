@@ -18,6 +18,7 @@ logging.basicConfig(
 
 
 from utils import get_chrom_size_from_bam, wig_to_bw
+from get_signal import get_raw_signal_access, get_exp_signal_access
 
 
 def parse_args():
@@ -33,26 +34,36 @@ def parse_args():
         default=None,
         help=("BAM file containing the aligned reads. \n" "Default: None"),
     )
-
+    parser.add_argument(
+        "--ref_fasta",
+        type=str,
+        default=None,
+        help=("FASTA file containing reference genome. \n" "Default: None"),
+    )
     parser.add_argument(
         "--peak_file",
         type=str,
         default=None,
         help=(
             "BED file containing genomic regions for generating signal. \n"
-            "If none, will use the whole genome as input regions. \n"
             "Default: None"
         ),
     )
+    parser.add_argument("--signal", type=str, choices=["raw", "exp"], default="raw")
     parser.add_argument(
-        "--signal", type=str, choices=["raw", "smooth", "bias_correct"], default="raw"
-    )
-
-    parser.add_argument(
-        "--smooth_window",
+        "--window_size",
         type=int,
         default=11,
         help=("Number of base pairs for smoothing signal. Default: 11"),
+    )
+    parser.add_argument(
+        "--bias_table_file",
+        type=str,
+        default=None,
+        help=(
+            "TXT file containing enzyme bias for each k-mer. This file is required to for bias correction. \n"
+            "Default: None"
+        ),
     )
     parser.add_argument("--ext", type=int, default=50)
     parser.add_argument(
@@ -80,87 +91,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_raw_edit_counts(
-    chrom: str = None,
-    start: int = None,
-    end: int = None,
-    bam: pysam.Samfile = None,
-) -> np.array:
-    """
-    Get Ddda editing sites from specific genomic region
-
-    Parameters
-    ----------
-    chrom : str
-        Chromosome anme
-    start : int
-        Start position
-    end : int
-        End position
-    bam : pysam.Samfile
-        BAM file
-    """
-
-    signal_forward = np.zeros(shape=(end - start))
-    signal_reverse = np.zeros(shape=(end - start))
-
-    for read in bam.fetch(reference=chrom, start=start, end=end):
-        refer_seq = read.get_reference_sequence().upper()
-        query_seq = read.query_sequence.upper()
-
-        # we only look at reads with substitution
-        if len(refer_seq) != len(query_seq):
-            continue
-
-        for i in range(len(refer_seq)):
-            edit_site = read.reference_start + i
-
-            # C -> T at forward strand
-            if refer_seq[i] == "C" and query_seq[i] == "T":
-                if start <= edit_site < end:
-                    signal_forward[edit_site - start] += 1
-
-            # C -> T at reverse strand
-            elif refer_seq[i] == "G" and query_seq[i] == "A":
-                if start <= edit_site < end:
-                    signal_reverse[edit_site - start] += 1
-
-    signal = signal_forward + signal_reverse
-
-    return signal
-
-
-def output_raw(bam, grs, wig_filename):
-    with open(wig_filename, "a") as f:
-        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal = get_raw_edit_counts(chrom=chrom, start=start, end=end, bam=bam)
-
-            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            f.write("\n".join(str(e) for e in signal))
-            f.write("\n")
-
-
-def output_raw_smooth(bam, grs, wig_filename, smooth_window):
-    half_smooth_window = smooth_window // 2
-
-    with open(wig_filename, "a") as f:
-        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal = get_raw_edit_counts(
-                chrom=chrom,
-                start=start - half_smooth_window,
-                end=end + half_smooth_window,
-                bam=bam,
-            )
-
-            w = np.ones(half_smooth_window, "d")
-            signal_ = np.convolve(w, signal, mode="valid")
-            signal_ = signal_[half_smooth_window:-half_smooth_window]
-
-            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            f.write("\n".join(str(e) for e in signal_))
-            f.write("\n")
-
-
 def main():
     args = parse_args()
 
@@ -176,23 +106,60 @@ def main():
 
     logging.info(f"Total of {len(grs)} regions")
 
-    wig_filename = os.path.join(args.out_dir, "{}.wig".format(args.out_name))
-    bw_filename = os.path.join(args.out_dir, "{}.bw".format(args.out_name))
+    if args.ref_fasta:
+        fasta = pysam.FastaFile(args.ref_fasta)
 
-    if args.signal == "raw":
-        output_raw(bam=bam, grs=grs, wig_filename=wig_filename)
-    elif args.signal == "smooth":
-        output_raw_smooth(
-            bam=bam,
-            grs=grs,
-            wig_filename=wig_filename,
-            smooth_window=args.smooth_window,
-        )
+    if args.bias_table_file:
+        logging.info(f"Loading bias table")
+        kmer_dict = {}
+        with open(args.bias_table_file, "r") as file:
+            for line in file:
+                key, value = line.strip().split("\t")
+                kmer_dict[key] = float(value)
+
+    wig_forward_filename = os.path.join(args.out_dir, "{}.forward.wig".format(args.out_name))
+    wig_reverse_filename = os.path.join(args.out_dir, "{}.reverse.wig".format(args.out_name))
+    bw_forward_filename = os.path.join(args.out_dir, "{}.forward.bw".format(args.out_name))
+    bw_reverse_filename = os.path.join(args.out_dir, "{}.reverse.bw".format(args.out_name))
+
+    with open(wig_forward_filename, "a") as f:
+        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+            if args.signal == "raw":
+                signal_forward, signal_reverse = get_raw_signal_access(chrom, start, end, bam)
+            elif args.signal == "exp":
+                signal = get_exp_signal_access(
+                    chrom=chrom,
+                    start=start,
+                    end=end,
+                    bam=bam,
+                    window_size=args.window_size,
+                    fasta=fasta,
+                    kmer_dict=kmer_dict,
+                )
+
+            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            f.write("\n".join(str(e) for e in signal_forward))
+            f.write("\n")
+            
+    with open(wig_reverse_filename, "a") as f:
+        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+            if args.signal == "raw":
+                signal_forward, signal_reverse = get_raw_signal_access(chrom, start, end, bam)
+
+            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            f.write("\n".join(str(e) for e in signal_reverse))
+            f.write("\n")
 
     # convert to bigwig file
     wig_to_bw(
-        wig_filename=wig_filename,
-        bw_filename=bw_filename,
+        wig_filename=wig_forward_filename,
+        bw_filename=bw_forward_filename,
+        chrom_size_file=args.chrom_size_file,
+    )
+    
+    wig_to_bw(
+        wig_filename=wig_reverse_filename,
+        bw_filename=bw_reverse_filename,
         chrom_size_file=args.chrom_size_file,
     )
 
