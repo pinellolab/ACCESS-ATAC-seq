@@ -16,8 +16,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-
-from utils import get_chrom_size_from_bam, wig_to_bw
+from utils import get_chrom_size_from_bam
+from get_signal import get_raw_signal_atac
 
 
 def parse_args():
@@ -44,16 +44,6 @@ def parse_args():
             "Default: None"
         ),
     )
-    parser.add_argument(
-        "--signal", type=str, choices=["raw", "smooth", "bias_correct"], default="raw"
-    )
-
-    parser.add_argument(
-        "--smooth_window",
-        type=int,
-        default=11,
-        help=("Number of base pairs for smoothing signal. Default: 11"),
-    )
     parser.add_argument("--ext", type=int, default=50)
     parser.add_argument(
         "--out_dir",
@@ -64,12 +54,18 @@ def parse_args():
             "Default: the current working directory"
         ),
     )
+
     parser.add_argument(
         "--out_name",
         type=str,
         default="counts",
         help=("Names for output file. Default: counts"),
     )
+
+    parser.add_argument("--forward_shift", type=int, default=4)
+
+    parser.add_argument("--reverse_shift", type=int, default=4)
+
     parser.add_argument(
         "--chrom_size_file",
         type=str,
@@ -78,28 +74,6 @@ def parse_args():
     )
 
     return parser.parse_args()
-    
-
-
-def output_raw_smooth(bam, grs, wig_filename, smooth_window):
-    half_smooth_window = smooth_window // 2
-
-    with open(wig_filename, "a") as f:
-        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal = get_raw_edit_counts(
-                chrom=chrom,
-                start=start - half_smooth_window,
-                end=end + half_smooth_window,
-                bam=bam,
-            )
-
-            w = np.ones(half_smooth_window, "d")
-            signal_ = np.convolve(w, signal, mode="valid")
-            signal_ = signal_[half_smooth_window:-half_smooth_window]
-
-            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            f.write("\n".join(str(e) for e in signal_))
-            f.write("\n")
 
 
 def main():
@@ -117,25 +91,38 @@ def main():
 
     logging.info(f"Total of {len(grs)} regions")
 
-    wig_filename = os.path.join(args.out_dir, "{}.wig".format(args.out_name))
-    bw_filename = os.path.join(args.out_dir, "{}.bw".format(args.out_name))
+    output_fname = os.path.join(args.out_dir, "{}.wig".format(args.out_name))
 
-    if args.signal == "raw":
-        output_raw(bam=bam, grs=grs, wig_filename=wig_filename)
-    elif args.signal == "smooth":
-        output_raw_smooth(
-            bam=bam,
-            grs=grs,
-            wig_filename=wig_filename,
-            smooth_window=args.smooth_window,
-        )
+    # Open a new bigwig file for writing
+    with open(output_fname, "a") as f:
+        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+            signal = get_raw_signal_atac(
+                chrom=chrom,
+                start=start,
+                end=end,
+                bam=bam,
+                forward_shift=args.forward_shift,
+                reverse_shift=args.reverse_shift,
+            )
+
+            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            f.write("\n".join(str(e) for e in signal))
+            f.write("\n")
 
     # convert to bigwig file
-    wig_to_bw(
-        wig_filename=wig_filename,
-        bw_filename=bw_filename,
-        chrom_size_file=args.chrom_size_file,
+    bw_filename = os.path.join(args.out_dir, "{}.bw".format(args.out_name))
+    os.system(
+        " ".join(
+            [
+                "wigToBigWig",
+                output_fname,
+                args.chrom_size_file,
+                bw_filename,
+                "-verbose=0",
+            ]
+        )
     )
+    os.remove(output_fname)
 
 
 if __name__ == "__main__":

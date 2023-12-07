@@ -8,7 +8,7 @@ import pysam
 import logging
 from itertools import product
 import pyranges as pr
-from utils import get_chrom_size_from_bam, revcomp
+from utils import revcomp
 
 
 logging.basicConfig(

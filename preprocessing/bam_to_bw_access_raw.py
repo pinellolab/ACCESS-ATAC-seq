@@ -16,8 +16,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-from utils import get_chrom_size_from_bam
-from get_signal import get_raw_signal_atac
+
+from utils import get_chrom_size_from_bam, wig_to_bw
+from get_signal import get_raw_signal_access
 
 
 def parse_args():
@@ -33,14 +34,12 @@ def parse_args():
         default=None,
         help=("BAM file containing the aligned reads. \n" "Default: None"),
     )
-
     parser.add_argument(
         "--peak_file",
         type=str,
         default=None,
         help=(
             "BED file containing genomic regions for generating signal. \n"
-            "If none, will use the whole genome as input regions. \n"
             "Default: None"
         ),
     )
@@ -54,18 +53,12 @@ def parse_args():
             "Default: the current working directory"
         ),
     )
-
     parser.add_argument(
         "--out_name",
         type=str,
         default="counts",
         help=("Names for output file. Default: counts"),
     )
-
-    parser.add_argument("--forward_shift", type=int, default=4)
-
-    parser.add_argument("--reverse_shift", type=int, default=4)
-
     parser.add_argument(
         "--chrom_size_file",
         type=str,
@@ -84,7 +77,6 @@ def main():
     if args.peak_file:
         logging.info(f"Loading genomic regions from {args.peak_file}")
         grs = pr.read_bed(args.peak_file)
-        # grs = grs.extend(args.ext)
         grs = grs.merge()
     else:
         logging.info(f"Using whole genome")
@@ -92,38 +84,60 @@ def main():
 
     logging.info(f"Total of {len(grs)} regions")
 
-    output_fname = os.path.join(args.out_dir, "{}.wig".format(args.out_name))
+    wig_filename = os.path.join(args.out_dir, "{}.wig".format(args.out_name))
+    wig_forward_filename = os.path.join(
+        args.out_dir, "{}.forward.wig".format(args.out_name)
+    )
+    wig_reverse_filename = os.path.join(
+        args.out_dir, "{}.reverse.wig".format(args.out_name)
+    )
+    bw_filename = os.path.join(args.out_dir, "{}.bw".format(args.out_name))
+    bw_forward_filename = os.path.join(
+        args.out_dir, "{}.forward.bw".format(args.out_name)
+    )
+    bw_reverse_filename = os.path.join(
+        args.out_dir, "{}.reverse.bw".format(args.out_name)
+    )
 
-    # Open a new bigwig file for writing
-    with open(output_fname, "a") as f:
+    with open(wig_forward_filename, "a") as forward_file, open(
+        wig_reverse_filename, "a"
+    ) as reverse_file, open(wig_filename, "a") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal = get_raw_signal_atac(
-                chrom=chrom,
-                start=start,
-                end=end,
-                bam=bam,
-                forward_shift=args.forward_shift,
-                reverse_shift=args.reverse_shift,
+            signal_forward, signal_reverse = get_raw_signal_access(
+                chrom, start, end, bam
             )
+            signal = signal_forward + signal_reverse
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             f.write("\n".join(str(e) for e in signal))
             f.write("\n")
 
+            forward_file.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            forward_file.write("\n".join(str(e) for e in signal_forward))
+            forward_file.write("\n")
+
+            reverse_file.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            reverse_file.write("\n".join(str(e) for e in signal_reverse))
+            reverse_file.write("\n")
+
     # convert to bigwig file
-    bw_filename = os.path.join(args.out_dir, "{}.bw".format(args.out_name))
-    os.system(
-        " ".join(
-            [
-                "wigToBigWig",
-                output_fname,
-                args.chrom_size_file,
-                bw_filename,
-                "-verbose=0",
-            ]
-        )
+    wig_to_bw(
+        wig_filename=wig_filename,
+        bw_filename=bw_filename,
+        chrom_size_file=args.chrom_size_file,
     )
-    os.remove(output_fname)
+    
+    wig_to_bw(
+        wig_filename=wig_forward_filename,
+        bw_filename=bw_forward_filename,
+        chrom_size_file=args.chrom_size_file,
+    )
+
+    wig_to_bw(
+        wig_filename=wig_reverse_filename,
+        bw_filename=bw_reverse_filename,
+        chrom_size_file=args.chrom_size_file,
+    )
 
 
 if __name__ == "__main__":

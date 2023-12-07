@@ -18,7 +18,7 @@ logging.basicConfig(
 
 
 from utils import get_chrom_size_from_bam, wig_to_bw
-from get_signal import get_raw_signal_access, get_exp_signal_access
+from get_signal import get_raw_signal_access
 
 
 def parse_args():
@@ -117,38 +117,42 @@ def main():
                 key, value = line.strip().split("\t")
                 kmer_dict[key] = float(value)
 
-    wig_forward_filename = os.path.join(args.out_dir, "{}.forward.wig".format(args.out_name))
-    wig_reverse_filename = os.path.join(args.out_dir, "{}.reverse.wig".format(args.out_name))
-    bw_forward_filename = os.path.join(args.out_dir, "{}.forward.bw".format(args.out_name))
-    bw_reverse_filename = os.path.join(args.out_dir, "{}.reverse.bw".format(args.out_name))
+    wig_forward = os.path.join(
+        args.out_dir, "{}.wig".format(args.out_name)
+    )
+    wig_forward_filename = os.path.join(
+        args.out_dir, "{}.forward.wig".format(args.out_name)
+    )
+    wig_reverse_filename = os.path.join(
+        args.out_dir, "{}.reverse.wig".format(args.out_name)
+    )
+    bw_filename = os.path.join(
+        args.out_dir, "{}.bw".format(args.out_name)
+    )
+    bw_forward_filename = os.path.join(
+        args.out_dir, "{}.forward.bw".format(args.out_name)
+    )
+    bw_reverse_filename = os.path.join(
+        args.out_dir, "{}.reverse.bw".format(args.out_name)
+    )
 
-    with open(wig_forward_filename, "a") as f:
+    with open(wig_forward_filename, "a") as forward_file, open(
+        wig_reverse_filename, "a"
+    ) as reverse_file:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             if args.signal == "raw":
-                signal_forward, signal_reverse = get_raw_signal_access(chrom, start, end, bam)
-            elif args.signal == "exp":
-                signal = get_exp_signal_access(
-                    chrom=chrom,
-                    start=start,
-                    end=end,
-                    bam=bam,
-                    window_size=args.window_size,
-                    fasta=fasta,
-                    kmer_dict=kmer_dict,
+                signal_forward, signal_reverse = get_raw_signal_access(
+                    chrom, start, end, bam
                 )
+                signal = signal_forward + signal_reverse
 
-            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            f.write("\n".join(str(e) for e in signal_forward))
-            f.write("\n")
-            
-    with open(wig_reverse_filename, "a") as f:
-        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            if args.signal == "raw":
-                signal_forward, signal_reverse = get_raw_signal_access(chrom, start, end, bam)
+            forward_file.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            forward_file.write("\n".join(str(e) for e in signal_forward))
+            forward_file.write("\n")
 
-            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            f.write("\n".join(str(e) for e in signal_reverse))
-            f.write("\n")
+            reverse_file.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            reverse_file.write("\n".join(str(e) for e in signal_reverse))
+            reverse_file.write("\n")
 
     # convert to bigwig file
     wig_to_bw(
@@ -156,7 +160,7 @@ def main():
         bw_filename=bw_forward_filename,
         chrom_size_file=args.chrom_size_file,
     )
-    
+
     wig_to_bw(
         wig_filename=wig_reverse_filename,
         bw_filename=bw_reverse_filename,
