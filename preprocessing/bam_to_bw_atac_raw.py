@@ -62,10 +62,6 @@ def parse_args():
         help=("Names for output file. Default: counts"),
     )
 
-    parser.add_argument("--forward_shift", type=int, default=4)
-
-    parser.add_argument("--reverse_shift", type=int, default=4)
-
     parser.add_argument(
         "--chrom_size_file",
         type=str,
@@ -100,9 +96,7 @@ def main():
                 chrom=chrom,
                 start=start,
                 end=end,
-                bam=bam,
-                forward_shift=args.forward_shift,
-                reverse_shift=args.reverse_shift,
+                bam=bam
             )
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")

@@ -7,8 +7,6 @@ import numpy as np
 from utils import revcomp
 
 
-EPS = 1e-08
-
 def get_bias_signal_access(
     fasta: pysam.FastaFile, chrom: str, start: int, end: int, kmer_dict: dict
 ) -> np.array:
@@ -173,8 +171,6 @@ def get_raw_signal_atac(
     chrom: str = None,
     start: int = None,
     end: int = None,
-    forward_shift: int = None,
-    reverse_shift: int = None,
     bam: pysam.Samfile = None,
 ) -> np.array:
     """
@@ -197,9 +193,9 @@ def get_raw_signal_atac(
     for read in bam.fetch(reference=chrom, start=start, end=end):
         # cut counts
         if read.is_reverse:
-            cut_site = read.reference_end - reverse_shift
+            cut_site = read.reference_end - 5
         else:
-            cut_site = read.reference_start + forward_shift
+            cut_site = read.reference_start + 4
 
         if start <= cut_site < end:
             signal[cut_site - start] += 1

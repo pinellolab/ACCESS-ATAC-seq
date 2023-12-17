@@ -80,6 +80,46 @@ def parse_args():
     return parser.parse_args()
 
 
+def get_signal(bw, grs):
+    window_size = grs.End.values[0] - grs.Start.values[0]
+    signal = np.zeros(shape=(len(grs), window_size))
+
+    for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
+        signal[i] = bw.values(chrom, start, end)
+
+    signal[np.isnan(signal)] = 0
+    signal = np.mean(signal, axis=0)
+
+    return signal
+
+
+def get_pwm(fasta, grs):
+    window_size = grs.End.values[0] - grs.Start.values[0]
+
+    pwm = dict(
+        [
+            ("A", [0.0] * window_size),
+            ("C", [0.0] * window_size),
+            ("G", [0.0] * window_size),
+            ("T", [0.0] * window_size),
+            ("N", [0.0] * window_size),
+        ]
+    )
+
+    for i, (chrom, start, end, strand) in enumerate(
+        zip(grs.Chromosome, grs.Start, grs.End, grs.Strand)
+    ):
+        seq = str(fasta.fetch(chrom, start, end)).upper()
+
+        if strand == "-":
+            seq = revcomp(seq)
+
+            for i in range(len(seq)):
+                pwm[seq[i]][i] += 1
+                
+    return pwm
+
+
 def main():
     args = parse_args()
 
@@ -102,32 +142,10 @@ def main():
     bw = pyBigWig.open(args.bw_file)
     fasta = pysam.FastaFile(args.ref_fasta)
 
-    signal = np.zeros(shape=(len(grs), window_size))
-    pwm = dict(
-        [
-            ("A", [0.0] * window_size),
-            ("C", [0.0] * window_size),
-            ("G", [0.0] * window_size),
-            ("T", [0.0] * window_size),
-            ("N", [0.0] * window_size),
-        ]
-    )
+    logging.info(f"Generating signal and pwm")
+    signal = get_signal(bw=bw, grs=grs)
+    pwm = get_pwm(fasta=fasta, grs=grs)
 
-    logging.info(f"Generating signal")
-    for i, (chrom, start, end, strand) in enumerate(
-        zip(grs.Chromosome, grs.Start, grs.End, grs.Strand)
-    ):
-        signal[i] = bw.values(chrom, start, end)
-
-        seq = str(fasta.fetch(chrom, start, end)).upper()
-
-        if strand == "-":
-            seq = revcomp(seq)
-
-            for i in range(len(seq)):
-                pwm[seq[i]][i] += 1
-
-    signal = np.mean(signal, axis=0)
     df = get_motif_df(pwm)
 
     logging.info("Plotting")

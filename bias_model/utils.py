@@ -1,0 +1,77 @@
+import os
+import random
+import numpy as np
+import torch
+import pandas as pd
+import pyranges as pr
+
+
+def set_seed(seed=42):
+    """
+    Set random seed
+    """
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+
+
+def one_hot_encode(seq):
+    """
+    Given a DNA sequence, return its one-hot encoding
+    """
+    # Make sure seq has only allowed bases
+    allowed = set("ACTGN")
+    if not set(seq).issubset(allowed):
+        invalid = set(seq) - allowed
+        raise ValueError(
+            f"Sequence contains chars not in allowed DNA alphabet (ACGTN): {invalid}"
+        )
+
+    # Dictionary returning one-hot encoding for each nucleotide
+    nuc_d = {
+        "A": [1.0, 0.0, 0.0, 0.0],
+        "C": [0.0, 1.0, 0.0, 0.0],
+        "G": [0.0, 0.0, 1.0, 0.0],
+        "T": [0.0, 0.0, 0.0, 1.0],
+        "N": [0.0, 0.0, 0.0, 1.0],
+    }
+
+    # Create array from nucleotide sequence
+    vec = np.array([nuc_d[x] for x in seq])
+
+    return vec
+
+
+def pad_and_split(grs: pr.PyRanges = None, k: int = 128):
+    """
+    This function pad the input regions
+
+    Parameters
+    ----------
+    grs : _type_
+        _description_
+    k : int, optional
+        _description_, by default 128
+    """
+    chroms, starts, ends = [], [], []
+
+    for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+        # pad the regions
+        n = (end - start) // k
+        mid = (start + end) // 2
+        start = mid - (n + 1) / 2 * k
+        end = mid + (n + 1) / 2 * k
+
+        # split the regions
+        for i in range(n + 1):
+            chroms.append(chrom)
+            starts.append(start + i * k)
+            ends.append(start + (i + 1) * k)
+
+    grs = pr.from_dict({"Chromosome": chroms, "Start": starts, "End": ends})
+
+    return grs
