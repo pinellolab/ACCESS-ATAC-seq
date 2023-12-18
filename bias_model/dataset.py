@@ -1,3 +1,4 @@
+import torch
 from typing import List, Optional
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
@@ -9,6 +10,7 @@ class DNASeqDataSet(Dataset):
 
         self.x = x
         self.y = y
+        self.train = train
         self.len = x.shape[0]
 
     def __len__(self):

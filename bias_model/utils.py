@@ -41,7 +41,7 @@ def one_hot_encode(seq):
     }
 
     # Create array from nucleotide sequence
-    vec = np.array([nuc_d[x] for x in seq])
+    vec = np.array([nuc_d[x] for x in seq], dtype=np.float32)
 
     return vec
 
@@ -63,15 +63,21 @@ def pad_and_split(grs: pr.PyRanges = None, k: int = 128):
         # pad the regions
         n = (end - start) // k
         mid = (start + end) // 2
-        start = mid - (n + 1) / 2 * k
-        end = mid + (n + 1) / 2 * k
+        start_new = mid - (n + 1) / 2 * k
 
         # split the regions
         for i in range(n + 1):
             chroms.append(chrom)
-            starts.append(start + i * k)
-            ends.append(start + (i + 1) * k)
+            starts.append(start_new + i * k)
+            ends.append(start_new + (i + 1) * k)
 
     grs = pr.from_dict({"Chromosome": chroms, "Start": starts, "End": ends})
 
     return grs
+
+
+# Generates a random sequence containing A/C/G/T of length n
+def random_seq(n):
+    bases = ["A", "C", "G", "T"]
+    rand_seq = "".join([np.random.choice(bases) for i in range(n)])
+    return rand_seq

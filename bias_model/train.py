@@ -2,14 +2,16 @@ import argparse
 import os
 import sys
 import numpy as np
-import pandas as pd
 import warnings
 import torch
 import logging
 from torch.optim import Adam
+from torch.nn.utils.clip_grad import clip_grad_value_
 import pyBigWig
 import pyranges as pr
 import pysam
+from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR
 
 from model import BiasNet
 from utils import pad_and_split, one_hot_encode, set_seed
@@ -24,9 +26,10 @@ logging.basicConfig(
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
 
-chrom_valid = ["chr5", "chr8", "chr20"]
+chrom_valid = ["chr2", "chr20"]
 chrom_train = [
-    "chr2",
+    "chr1",
+    "chr3",
     "chr4",
     "chr5",
     "chr6",
@@ -66,9 +69,14 @@ def parse_args():
         "--ref_fasta", type=str, default=None, help="FASTQ file for reference genome"
     )
     parser.add_argument(
-        "--seed", type=int, default=42, help="random seed for initialization"
+        "--epochs", type=int, default=200, help="Number of epochs for training"
     )
-    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
+    parser.add_argument("--log_dir", type=str, default=None, help="Log directory")
+    parser.add_argument("--log_name", type=str, default=None, help="Log name")
+    parser.add_argument("--out_dir", type=str, default=None, help="Output directory")
+    parser.add_argument("--out_name", type=str, default=None, help="Output name")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     return parser.parse_args()
 
 
@@ -78,10 +86,14 @@ def train(model, dataloader, criterion, optimizer, device):
     train_loss = 0.0
     for x, y in dataloader:
         pred = model(x.to(device))
-        loss = criterion(pred.view(-1), y.to(device))
+        loss = criterion(pred, y.to(device))
 
         optimizer.zero_grad()
         loss.backward()
+
+        # clip gradient values
+        # clip_grad_value_(model.parameters(), 1.5)
+
         optimizer.step()
 
         train_loss += loss.item() / len(dataloader)
@@ -95,7 +107,7 @@ def valid(model, dataloader, criterion, device):
     valid_loss = 0.0
     for x, y in dataloader:
         pred = model(x.to(device))
-        loss = criterion(pred.view(-1), y.to(device))
+        loss = criterion(pred, y.to(device))
         valid_loss += loss.item() / len(dataloader)
 
     return valid_loss
@@ -119,8 +131,8 @@ def main():
     grs_valid = grs[grs.Chromosome.isin(chrom_valid)]
 
     logging.info("Generating data for training and validation")
-    train_x = np.empty(shape=(len(grs_train), 128, 4))
-    train_y = np.empty(shape=(len(grs_train), 128))
+    train_x = np.empty(shape=(len(grs_train), 128, 4), dtype=np.float32)
+    train_y = np.empty(shape=(len(grs_train), 128), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(
         zip(grs_train.Chromosome, grs_train.Start, grs_train.End)
     ):
@@ -129,10 +141,12 @@ def main():
 
         # convert DNA sequence to one-hot encode
         train_x[i] = one_hot_encode(seq=seq)
-        train_y[i] = np.array(bw.values(chrom, start, end))
+        signal = np.array(bw.values(chrom, start, end))
+        signal[np.isnan(signal)] = 0
+        train_y[i] = np.log(signal + 0.01)
 
-    valid_x = np.empty(shape=(len(grs_valid), 128, 4))
-    valid_y = np.empty(shape=(len(grs_valid), 128))
+    valid_x = np.empty(shape=(len(grs_valid), 128, 4), dtype=np.float32)
+    valid_y = np.empty(shape=(len(grs_valid), 128), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(
         zip(grs_valid.Chromosome, grs_valid.Start, grs_valid.End)
     ):
@@ -141,9 +155,9 @@ def main():
 
         # convert DNA sequence to one-hot encode
         valid_x[i] = one_hot_encode(seq=seq)
-        valid_y[i] = np.array(bw.values(chrom, start, end))
-
-    # logging(f"Training data: {train_x.shape[0]}, validation data: {valid_x.shape[0]}")
+        signal = np.array(bw.values(chrom, start, end))
+        signal[np.isnan(signal)] = 0
+        valid_y[i] = np.log(signal + 0.01)
 
     train_dataloader = get_dataloader(
         x=train_x,
@@ -171,9 +185,17 @@ def main():
     # Setup loss and optimizer
     criterion = torch.nn.MSELoss()
     optimizer = Adam(model.parameters(), lr=3e-04, weight_decay=1e-4)
+    scheduler = ReduceLROnPlateau(optimizer, "min", min_lr=1e-5, patience=10)
+
+    """ Train the model """
+    os.makedirs(args.log_dir, exist_ok=True)
+    log_dir = os.path.join(args.log_dir, f"{args.log_name}")
+    tb_writer = SummaryWriter(log_dir=log_dir)
 
     logging.info("Training started")
-    for epoch in range(10):
+    model_path = os.path.join(args.out_dir, f"{args.out_name}.pth")
+    best_score = np.Inf
+    for epoch in range(args.epochs):
         train_loss = train(
             dataloader=train_dataloader,
             model=model,
@@ -181,8 +203,29 @@ def main():
             optimizer=optimizer,
             device=device,
         )
-        
-        print(train_loss)
+        valid_loss = valid(
+            dataloader=valid_dataloader, model=model, criterion=criterion, device=device
+        )
+
+        # save log
+        tb_writer.add_scalar("Training loss", train_loss, epoch)
+        tb_writer.add_scalar("Valid loss", valid_loss, epoch)
+        tb_writer.add_scalar("Learning rate", optimizer.param_groups[0]["lr"], epoch)
+
+        # save model if find a better validation score
+        if valid_loss < best_score:
+            best_score = valid_loss
+            print(f"epoch: {epoch}, best score: {best_score}")
+            state = {
+                "state_dict": model.state_dict(),
+                "train_loss": train_loss,
+                "valid_loss": valid_loss,
+                "epoch": epoch,
+            }
+            torch.save(state, model_path)
+        scheduler.step(valid_loss)
+
+    logging.info(f"Training finished")
 
 
 if __name__ == "__main__":

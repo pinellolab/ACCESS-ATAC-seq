@@ -14,34 +14,57 @@ class BiasNet(nn.Module):
             nn.Conv1d(4, self.n_filters, kernel_size=self.kernel_size),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(2),
-            nn.Dropout(0.5),
+            nn.Dropout(0.25),
         )
 
         self.conv2 = nn.Sequential(
             nn.Conv1d(self.n_filters, self.n_filters, kernel_size=self.kernel_size),
             nn.ReLU(inplace=True),
             nn.MaxPool1d(2),
-            nn.Dropout(0.5),
+            nn.Dropout(0.25),
         )
 
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(928, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(928, 1024),
             nn.ReLU(),
+            nn.BatchNorm1d(1024),
             nn.Dropout(0.5),
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
+            nn.Linear(1024, 1024),
             nn.ReLU(),
+            nn.BatchNorm1d(1024),
             nn.Dropout(0.5),
-            nn.Linear(128, self.seq_len),
+            nn.Linear(1024, self.seq_len),
         )
 
     def forward(self, x):
         x = x.permute(0, 2, 1)
-
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.fc(x)
 
         return x
+
+
+if __name__ == "__main__":
+    model = BiasNet()
+
+    import torch
+    from utils import random_seq, one_hot_encode
+
+    seq1 = random_seq(128)
+    seq2 = random_seq(128)
+    x1 = one_hot_encode(seq1)
+    x1 = torch.tensor(x1).float()
+
+    x2 = one_hot_encode(seq2)
+    x2 = torch.tensor(x2).float()
+
+    x1 = x1.unsqueeze(dim=0)
+    x2 = x2.unsqueeze(dim=0)
+
+    x = torch.cat((x1, x2), dim=0)
+
+    x = model(x)
+
+    print(x)
