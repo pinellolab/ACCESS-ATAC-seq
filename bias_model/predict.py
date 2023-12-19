@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import numpy as np
+import subprocess
 import warnings
 import torch
 import logging
@@ -86,26 +87,15 @@ def main():
 
             # convert from log-scale to original scale
             pred = np.exp(pred) - 0.01
-            
+
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             f.write("\n".join(str(e) for e in pred))
             f.write("\n")
 
     logging.info(f"Predicting finished")
 
-    os.system(
-        " ".join(
-            [
-                "wigToBigWig",
-                wig_filename,
-                args.chrom_size_file,
-                bw_filename,
-                "-verbose=0",
-            ]
-        )
-    )
-    # os.remove(wig_filename)
-
+    subprocess.run(["wigToBigWig", wig_filename, args.chrom_size_file, bw_filename])
+    os.remove(wig_filename)
 
 if __name__ == "__main__":
     main()

@@ -76,7 +76,7 @@ def parse_args():
     parser.add_argument("--out_dir", type=str, default=None, help="Output directory")
     parser.add_argument("--out_name", type=str, default=None, help="Output name")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
     return parser.parse_args()
 
 
@@ -215,7 +215,7 @@ def main():
         # save model if find a better validation score
         if valid_loss < best_score:
             best_score = valid_loss
-            print(f"epoch: {epoch}, best score: {best_score}")
+            logging.info(f"epoch: {epoch}, best score: {best_score}")
             state = {
                 "state_dict": model.state_dict(),
                 "train_loss": train_loss,
