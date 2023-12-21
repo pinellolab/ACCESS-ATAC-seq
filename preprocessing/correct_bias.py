@@ -96,10 +96,10 @@ def main():
 
             raw_bias = raw_bias / np.sum(raw_bias)
             exp_signal = np.sum(raw_signal) * raw_bias
-            norm_signal = np.divide(raw_signal + 1, exp_signal + 1)
+            norm_signal = np.divide(raw_signal, exp_signal)
 
-            norm_signal[np.isnan(norm_signal)] = 1
-            norm_signal = np.log2(norm_signal)
+            # norm_signal[np.isnan(norm_signal)] = 1
+            norm_signal = np.log2(norm_signal + 0.1)
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             f.write("\n".join(str(e) for e in norm_signal))
