@@ -9,7 +9,6 @@ import pyranges as pr
 import pyBigWig
 import logging
 import subprocess
-import pysam
 
 
 logging.basicConfig(
@@ -84,7 +83,7 @@ def main():
     grs = grs.merge()
 
     logging.info(f"Total of {len(grs)} regions")
-    bw_coverage = pysam.Samfile(args.bam_file, "rb" )
+    bw_coverage = pyBigWig.open(args.bw_coverage, "rb" )
     bw_raw = pyBigWig.open(args.bw_raw_file)
     bw_bias = pyBigWig.open(args.bw_bias_file)
 
@@ -94,25 +93,23 @@ def main():
     with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             # get coverage
+            coverage = np.array(bw_coverage.values(chrom, start, end))
             raw_signal = np.array(bw_raw.values(chrom, start, end))
-            raw_bias = np.array(bw_bias.values(chrom, start, end))
+            bias_signal = np.array(bw_bias.values(chrom, start, end))
 
             raw_signal[np.isnan(raw_signal)] = 0
-            raw_bias[np.isnan(raw_bias)] = 0
-
-            raw_bias = raw_bias / np.sum(raw_bias)
-            exp_signal = np.sum(raw_signal) * raw_bias
-            norm_signal = np.divide(raw_signal, exp_signal)
-
-            norm_signal = np.log2(norm_signal + 0.1)
+            bias_signal[np.isnan(bias_signal)] = 0
+            coverage[np.isnan(coverage)] = 0
+            
+            bs_signal = raw_signal - np.multiply(coverage, bias_signal)
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            f.write("\n".join(str(e) for e in norm_signal))
+            f.write("\n".join(str(e) for e in bs_signal))
             f.write("\n")
 
     # convert to bigwig file
     subprocess.run(["wigToBigWig", wig_filename, args.chrom_size_file, bw_filename])
-    # os.remove(wig_filename)
+    os.remove(wig_filename)
 
 if __name__ == "__main__":
     main()

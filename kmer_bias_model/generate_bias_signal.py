@@ -114,9 +114,9 @@ def get_bias_signal_access(
         signal_forward[i] = kmer_dict.get(kmer_seq, 0)
         signal_reverse[i] = kmer_dict.get(revcomp(kmer_seq), 0)
 
-    signal = signal_forward + signal_reverse
+    # signal = signal_forward + signal_reverse
 
-    return signal
+    return signal_forward, signal_reverse
 
 
 def main():
@@ -135,15 +135,45 @@ def main():
             key, value = line.strip().split("\t")
             kmer_dict[key] = float(value)
 
+    # Normalize the bias table
+    total = sum(kmer_dict.values())
+    for kmer in kmer_dict.keys():
+        kmer_dict[kmer] = round(kmer_dict[kmer] / total, 6)
+
     wig_filename = os.path.join(args.out_dir, f"{args.out_name}.wig")
     bw_filename = os.path.join(args.out_dir, f"{args.out_name}.bw")
 
+    wig_forward_filename = os.path.join(
+        args.out_dir, "{}.forward.wig".format(args.out_name)
+    )
+    wig_reverse_filename = os.path.join(
+        args.out_dir, "{}.reverse.wig".format(args.out_name)
+    )
+    bw_forward_filename = os.path.join(
+        args.out_dir, "{}.forward.bw".format(args.out_name)
+    )
+    bw_reverse_filename = os.path.join(
+        args.out_dir, "{}.reverse.bw".format(args.out_name)
+    )
+
     # Open a new bigwig file for writing
-    with open(wig_filename, "w") as f:
+    with open(wig_forward_filename, "a") as forward_file, open(
+        wig_reverse_filename, "a"
+    ) as reverse_file, open(wig_filename, "a") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            bias_signal = get_bias_signal_access(
+            signal_forward, signal_reverse = get_bias_signal_access(
                 fasta=fasta, chrom=chrom, start=start, end=end, kmer_dict=kmer_dict
             )
+
+            bias_signal = signal_forward + signal_reverse
+
+            forward_file.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            forward_file.write("\n".join(str(e) for e in signal_forward))
+            forward_file.write("\n")
+
+            reverse_file.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            reverse_file.write("\n".join(str(e) for e in signal_reverse))
+            reverse_file.write("\n")
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             f.write("\n".join(str(e) for e in bias_signal))
@@ -151,7 +181,17 @@ def main():
 
     # convert to bigwig file
     subprocess.run(["wigToBigWig", wig_filename, args.chrom_size_file, bw_filename])
+    subprocess.run(
+        ["wigToBigWig", wig_forward_filename, args.chrom_size_file, bw_forward_filename]
+    )
+    subprocess.run(
+        ["wigToBigWig", wig_reverse_filename, args.chrom_size_file, bw_reverse_filename]
+    )
+
     os.remove(wig_filename)
+    os.remove(wig_forward_filename)
+    os.remove(wig_reverse_filename)
+
     logging.info(f"Done!")
 
 

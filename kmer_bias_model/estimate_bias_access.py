@@ -65,6 +65,7 @@ def parse_args():
         help=("BAM file containing reads. \n" "Default: None"),
     )
     parser.add_argument("--k_mer", type=int, default=5)
+    parser.add_argument("--train", default=False, action="store_true")
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -94,11 +95,13 @@ def main():
 
     bam = pysam.Samfile(args.bam_file, "rb")
     fasta = pysam.FastaFile(args.ref_fasta)
-
     grs = pr.read_bed(args.bed_file)
 
     # split the regions for training and validation
-    grs = grs[grs.Chromosome.isin(chrom_train)]
+    if args.train:
+        grs = grs[grs.Chromosome.isin(chrom_train)]
+
+    logging.info(f"Total of {len(grs)} regions")
 
     alphabet = ["A", "C", "G", "T"]
     kmer_comb = ["".join(e) for e in product(alphabet, repeat=args.k_mer)]
@@ -140,15 +143,17 @@ def main():
                     kmer_dict[motif_seq] += 1
 
     # Normalize the bias table
-    total = sum(kmer_dict.values())
-    for kmer in kmer_dict.keys():
-        kmer_dict[kmer] = round(kmer_dict[kmer] / total, 6)
+    # total = sum(kmer_dict.values())
+    # for kmer in kmer_dict.keys():
+    #     kmer_dict[kmer] = round(kmer_dict[kmer] / total, 6)
 
     # Write the dictionary to a text file
     output_filename = os.path.join(args.out_dir, "{}.txt".format(args.out_name))
     with open(output_filename, "w") as f:
         for key, value in kmer_dict.items():
             f.write(f"{key}\t{value}\n")
+            
+    logging.info(f"Done")
 
 
 if __name__ == "__main__":
