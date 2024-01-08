@@ -37,7 +37,7 @@ def parse_args():
         ),
     )
     parser.add_argument("--peak_extend", type=int, default=100)
-    parser.add_argument("--window", type=int, default=100)
+    parser.add_argument("--window", type=int, default=11)
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -68,7 +68,7 @@ def main():
 
     logging.info(f"Loading genomic regions from {args.peak_file}")
     grs = pr.read_bed(args.peak_file)
-    grs = grs.extend(args.peak_extend)
+    # grs = grs.extend(args.peak_extend)
     grs = grs.merge()
 
     logging.info(f"Total of {len(grs)} regions")
@@ -101,6 +101,8 @@ def main():
                 # NAN to zero if needed
                 signal_raw[np.isnan(signal_raw)] = 0
                 signal_bias[np.isnan(signal_bias)] = 0
+                
+                # smooth the raw and bias signal
 
                 # normalize bias signal
                 if np.sum(signal_bias) > 0:
@@ -108,7 +110,7 @@ def main():
 
                 signal_exp = np.sum(signal_raw) * signal_bias
 
-                signal_norm = np.divide(signal_raw + 1, signal_exp + 1)
+                signal_norm = np.divide(signal_raw + 0.01, signal_exp + 0.01)
                 # signal_norm = np.log2(signal_norm)
 
                 # save signal to wig files
