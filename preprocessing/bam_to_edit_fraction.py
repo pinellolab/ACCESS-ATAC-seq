@@ -96,8 +96,18 @@ def main():
             edit_counts[np.isnan(edit_counts)] = 0
 
             # compute edit fraction
-            edit_fraction = np.divide(edit_counts, coverage)
-            edit_fraction[np.isnan(edit_fraction)] = 0
+            edit_fraction = np.divide(
+                edit_counts,
+                coverage,
+                out=np.zeros_like(edit_counts),
+                where=coverage != 0,
+            )
+            
+            # make no NAN and INF values in the results
+            assert not np.isnan(edit_fraction).any(), "Find NAN values"
+            assert not np.isinf(edit_fraction).any(), "Find INF values"
+                      
+ #           edit_fraction[np.isnan(edit_fraction)] = 0
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             f.write("\n".join(str(e) for e in edit_fraction))

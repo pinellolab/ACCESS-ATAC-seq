@@ -37,7 +37,8 @@ def parse_args():
         ),
     )
     parser.add_argument("--peak_extend", type=int, default=100)
-    parser.add_argument("--window", type=int, default=100)
+    parser.add_argument("--window", type=int, default=101)
+    parser.add_argument("--pseudo_count", type=float, default=1)
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -68,7 +69,7 @@ def main():
 
     logging.info(f"Loading genomic regions from {args.peak_file}")
     grs = pr.read_bed(args.peak_file)
-    # grs = grs.extend(args.peak_extend)
+    grs = grs.extend(args.peak_extend)
     grs = grs.merge()
 
     logging.info(f"Total of {len(grs)} regions")
@@ -84,41 +85,50 @@ def main():
     exp_bw_filename = f"{args.out_dir}/{args.out_name}.exp.bw"
     norm_bw_filename = f"{args.out_dir}/{args.out_name}.norm.bw"
 
+    half_window = args.window // 2
+
     with open(exp_wig_filename, "w") as exp_f, open(norm_wig_filename, "w") as norm_f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            n = (end - start) // args.window
+            signal_raw = np.array(
+                bw_raw.values(chrom, start - half_window, end + half_window)
+            )
+            signal_bias = np.array(
+                bw_bias.values(chrom, start - half_window, end + half_window)
+            )
 
-            for i in range(n):
-                _start, _end = start + i * args.window, start + (i + 1) * args.window
+            # NAN to zero if needed
+            signal_raw[np.isnan(signal_raw)] = 0
+            signal_bias[np.isnan(signal_bias)] = 0
 
-                if _end > end:
-                    _end = end
+            # get expected values
+            signal_exp = np.zeros(shape=(end - start))
+            for i in range(half_window, len(signal_raw) - half_window):
+                total_signal = np.sum(signal_raw[i - half_window : i + half_window])
+                total_bias = np.sum(signal_bias[i - half_window : i + half_window])
 
-                # read raw and bias signal
-                signal_raw = np.array(bw_raw.values(chrom, _start, _end))
-                signal_bias = np.array(bw_bias.values(chrom, _start, _end))
+                if total_bias == 0:
+                    signal_exp[i - half_window] = 0
+                else:
+                    signal_exp[i - half_window] = (
+                        total_signal * signal_bias[i] / total_bias
+                    )
 
-                # NAN to zero if needed
-                signal_raw[np.isnan(signal_raw)] = 0
-                signal_bias[np.isnan(signal_bias)] = 0
+            signal_norm = np.divide(
+                signal_raw[half_window:-half_window] + args.pseudo_count,
+                signal_exp + args.pseudo_count,
+            )
 
-                # normalize bias signal
-                if np.sum(signal_bias) > 0:
-                    signal_bias = signal_bias / np.sum(signal_bias)
+            signal_exp = np.round(signal_exp, decimals=3)
+            signal_norm = np.round(signal_norm, decimals=3)
 
-                signal_exp = np.sum(signal_raw) * signal_bias
+            # save signal to wig files
+            exp_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            exp_f.write("\n".join(str(e) for e in signal_exp))
+            exp_f.write("\n")
 
-                signal_norm = np.divide(signal_raw + 0.01, signal_exp + 0.01)
-                # signal_norm = np.log2(signal_norm)
-
-                # save signal to wig files
-                exp_f.write(f"fixedStep chrom={chrom} start={_start+1} step=1\n")
-                exp_f.write("\n".join(str(e) for e in signal_exp))
-                exp_f.write("\n")
-
-                norm_f.write(f"fixedStep chrom={chrom} start={_start+1} step=1\n")
-                norm_f.write("\n".join(str(e) for e in signal_norm))
-                norm_f.write("\n")
+            norm_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            norm_f.write("\n".join(str(e) for e in signal_norm))
+            norm_f.write("\n")
 
     # convert to bigwig file
     logging.info("Conveting wig to bigwig!")
