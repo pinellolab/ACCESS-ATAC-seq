@@ -1,12 +1,14 @@
 import os
-import sys
 import pyBigWig
 import pyranges as pr
 import numpy as np
 
 import argparse
 import logging
-import pyfaidx
+import subprocess
+
+import warnings
+warnings.filterwarnings('ignore')
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -22,46 +24,16 @@ def parse_args():
     )
 
     # Required parameters
-    parser.add_argument(
-        "--bw_file",
-        type=str,
-        default=None,
-        help=(
-            "BED file containing ChIP-seq peaks for a specific TF. \n" "Default: None"
-        ),
-    )
-
-    parser.add_argument(
-        "--pos_bed_file",
-        type=str,
-        default=None,
-        help=("BED file containing motif predicted binding sites. \n" "Default: None"),
-    )
-    parser.add_argument(
-        "--neg_bed_file",
-        type=str,
-        default=None,
-        help=("BED file containing motif predicted binding sites. \n" "Default: None"),
-    )
-
-    parser.add_argument(
-        "--extend",
-        type=int,
-        default=100,
-        help=("Flanking regions used to estimate footprint score. Default: 20"),
-    )
-
+    parser.add_argument("--bw_obs_file", type=str, default=None)
+    parser.add_argument("--bw_exp_file", type=str, default=None)
+    parser.add_argument("--fp_window", type=int, default=None)
+    parser.add_argument("--flank_window", type=int, default=None)
+    parser.add_argument("--smooth_window", type=int, default=None)
     parser.add_argument(
         "--peak_file",
         type=str,
         default=100,
         help=("Flanking regions used to estimate footprint score. Default: 20"),
-    )
-    parser.add_argument(
-        "--ref_fasta",
-        type=str,
-        default=None,
-        help=("FASTA file containing reference genome. \n" "Default: None"),
     )
     parser.add_argument(
         "--out_dir",
@@ -72,49 +44,83 @@ def parse_args():
             "Default: the current working directory"
         ),
     )
-
     parser.add_argument(
         "--out_name",
         type=str,
         default="counts",
         help=("Names for output file. Default: counts"),
     )
-
+    parser.add_argument(
+        "--chrom_size_file",
+        type=str,
+        default=None,
+        help="File including chromosome size. Default: None",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    grs_pos = pr.read_bed(args.pos_bed_file)
-    grs_neg = pr.read_bed(args.neg_bed_file)
+    bw_obs = pyBigWig.open(args.bw_obs_file)
+    bw_exp = pyBigWig.open(args.bw_exp_file)
 
-    grs_pos.Name = grs_pos.Name + '.Pos'
-    grs_neg.Name = grs_neg.Name + '.Neg'
+    extend = args.fp_window // 2 + args.flank_window
 
-    grs = pr.concat([grs_pos, grs_neg])
-    grs = grs.sort()
+    logging.info(f"Loading genomic regions from {args.peak_file}")
+    grs = pr.read_bed(args.peak_file)
+    grs = grs.merge()
 
-    grs_peak = pr.read_bed(args.peak_file)
-    grs = grs.overlap(grs_peak, strandedness=False, invert=False)
+    logging.info(f"Total of {len(grs)} regions")
 
-    grs = grs.extend(args.extend)
-    bw = pyBigWig.open(args.bw_file)
+    # compute footprint score per-nucleotide
+    wig_filename = os.path.join(args.out_dir, "{}.wig".format(args.out_name))
+    bw_filename = os.path.join(args.out_dir, "{}.bw".format(args.out_name))
 
-    pyf = pyfaidx.Fasta(args.ref_fasta)
-    grs = pr.genomicfeatures.genome_bounds(grs, chromsizes=pyf, clip=True)
+    logging.info(f"Calculating footprint score per-nucleotide")
+    with open(wig_filename, "w") as f:
+        for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+            _start = start - extend - args.smooth_window // 2
+            _end = end + extend + args.smooth_window // 2
 
-    # compute signal in TF binding site center
-    score = np.zeros(len(grs))
+            signal_obs = np.array(bw_obs.values(chrom, _start, _end))
+            signal_exp = np.array(bw_exp.values(chrom, _start, _end))
 
-    for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
-        score[i] = np.sum(bw.values(chrom, start, end))
+            # smooth the observed and expected signal by moving average
+            w = np.ones(args.smooth_window)
+            signal_obs_smooth = np.convolve(w / w.sum(), signal_obs, mode="valid")
+            signal_exp_smooth = np.convolve(w / w.sum(), signal_exp, mode="valid")
 
-    # compute footprint score
-    grs.Score = score
-    out_filename = os.path.join(args.out_dir, "{}.bed".format(args.out_name))
-    grs.to_bed(out_filename)
+            signal_norm = signal_obs_smooth - signal_exp_smooth
 
+            # compute footprint score per-nucleotide
+            # fp_socre = mean(flank signal) - mean(footprint signal)
+            fp_scores = np.zeros(end - start)
+            for i in range(extend, len(signal_norm) - extend):
+                fp_start, fp_end = i - args.fp_window // 2, i + args.fp_window // 2
+                left_flank_start = i - args.fp_window // 2 - args.flank_window
+                left_flank_end = i - args.fp_window // 2
+                right_blank_start = i + args.fp_window // 2
+                right_blank_end = i + args.fp_window // 2 + args.flank_window
+
+                fp_signal = signal_norm[fp_start:fp_end]
+                left_flank_signal = signal_norm[left_flank_start:left_flank_end]
+                right_flank_signal = signal_norm[right_blank_start:right_blank_end]
+
+                flank_signal = np.concatenate([left_flank_signal, right_flank_signal])
+
+                fp_scores[i - extend] = np.mean(flank_signal) - np.mean(fp_signal)
+
+            f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            f.write("\n".join(str(e) for e in fp_scores))
+            f.write("\n")
+
+    # convert to bigwig file
+    subprocess.run(["wigToBigWig", wig_filename, args.chrom_size_file, bw_filename])
+    
+    # os.remove(wig_filename)
+    
+    logging.info(f"Done!")
 
 if __name__ == "__main__":
     main()
