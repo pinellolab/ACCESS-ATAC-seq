@@ -71,19 +71,13 @@ def compute_fp_score(
     fp_scores = np.zeros(peak_len)
 
     for i in range(extend, len(signal) - extend):
-        # fp_start, fp_end = i - fp_window // 2, i + fp_window // 2
-        # left_flank_start = i - fp_window // 2 - flank_window
-        # left_flank_end = i - fp_window // 2
-        # right_blank_start = i + fp_window // 2
-        # right_blank_end = i + fp_window // 2 + flank_window
-
         fp_signal = signal[i - fp_window // 2 : i + fp_window // 2]
-        left_flank_signal = signal[i - fp_window // 2 - flank_window : i - fp_window // 2]
-        right_flank_signal = signal[i + fp_window // 2 : i + fp_window // 2 + flank_window]
-
-        # fp_signal = signal[fp_start:fp_end]
-        # left_flank_signal = signal[left_flank_start:left_flank_end]
-        # right_flank_signal = signal[right_blank_start:right_blank_end]
+        left_flank_signal = signal[
+            i - fp_window // 2 - flank_window : i - fp_window // 2
+        ]
+        right_flank_signal = signal[
+            i + fp_window // 2 : i + fp_window // 2 + flank_window
+        ]
 
         flank_signal = np.concatenate([left_flank_signal, right_flank_signal])
 
@@ -147,9 +141,13 @@ def main():
                 fp_window=args.fp_window,
                 flank_window=args.flank_window,
             )
-            
+
             norm_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            norm_f.write("\n".join(str(e) for e in signal_norm[extend: len(signal_norm) - extend]))
+            norm_f.write(
+                "\n".join(
+                    str(e) for e in signal_norm[extend : len(signal_norm) - extend]
+                )
+            )
             norm_f.write("\n")
 
             # We also need to estimate background footprint score per nucleotide,
@@ -175,7 +173,9 @@ def main():
     # convert to bigwig file
     sp.run(["wigToBigWig", obs_wig_filename, args.chrom_size_file, obs_bw_filename])
     sp.run(["wigToBigWig", exp_wig_filename, args.chrom_size_file, exp_bw_filename])
-    sp.run(["wigToBigWig", signal_wig_filename, args.chrom_size_file, signal_bw_filename])
+    sp.run(
+        ["wigToBigWig", signal_wig_filename, args.chrom_size_file, signal_bw_filename]
+    )
     os.remove(obs_wig_filename)
     os.remove(exp_wig_filename)
     os.remove(signal_wig_filename)
