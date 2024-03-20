@@ -3,7 +3,6 @@
 
 import argparse
 import pysam
-import sys
 
 def bam_to_frag(in_path, out_path, barcode_tag="CB", shift_plus=4, shift_minus=-4):
     """

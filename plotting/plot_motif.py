@@ -202,7 +202,7 @@ def main():
 
     # plot motif logo
     fig, ax = plt.subplots(1, 1, figsize=[4, 2])
-    ax.set_title(args.name)
+    # ax.set_title(args.name)
     ax.set_xlabel('Distance from motif center')
     ax.set_ylabel('Bit score')
     
