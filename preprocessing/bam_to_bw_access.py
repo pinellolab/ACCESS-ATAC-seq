@@ -7,7 +7,6 @@ import numpy as np
 import argparse
 import pysam
 import pyranges as pr
-import pyBigWig
 import logging
 import subprocess as sp
 
@@ -116,7 +115,7 @@ def output_count(bam, grs, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
     bw_filename = os.path.join(out_dir, "{}.wig".format(out_name))
 
-    with open(wig_filename, "a") as f:
+    with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             signal_forward, signal_reverse = get_edit_count(chrom, start, end, bam)
             signal = signal_forward + signal_reverse
@@ -134,7 +133,7 @@ def output_fraction(bam, grs, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
     bw_filename = os.path.join(out_dir, "{}.wig".format(out_name))
 
-    with open(wig_filename, "a") as f:
+    with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             # get coverage
             coverage = bam.count_coverage(chrom, start, end, quality_threshold=0)

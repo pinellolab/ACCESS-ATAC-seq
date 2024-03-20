@@ -51,17 +51,18 @@ def get_chrom_size_from_bam(bam: pysam.Samfile) -> pr.PyRanges:
     Parameters
     ----------
     bam : pysam.Samfile
-        _description_
+        Input bam file
 
     Returns
     -------
     pr.PyRanges
-        _description_
+        A PyRanges object containing chromosome size. Note this is 0-based
     """
 
     chromosome = list(bam.references)
-    start = [1] * len(chromosome)
+    start = [0] * len(chromosome)
     end = list(bam.lengths)
+    end = [x - 1 for x in end]
 
     grs = pr.from_dict({"Chromosome": chromosome, "Start": start, "End": end})
     
