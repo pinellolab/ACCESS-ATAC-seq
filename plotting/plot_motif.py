@@ -8,6 +8,10 @@ import pyranges as pr
 import pysam
 import logging
 import logomaker
+import matplotlib
+
+matplotlib.rcParams['pdf.fonttype'] = 42
+
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -18,7 +22,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# from . import utils
+
 from utils import get_chrom_size_from_bam, revcomp, get_motif_df
 
 
@@ -136,7 +140,6 @@ def get_access_pwm(bam, grs, fasta, window_size):
 
     for chrom, start, end in tqdm(zip(grs.Chromosome, grs.Start, grs.End)):
         for read in bam.fetch(reference=chrom, start=start, end=end):
-            
             # get reference and query sequence. 
             # for forward reads, it's from 5' to 3', for reverse reads, it's 3' to 5'
             refer_seq = read.get_reference_sequence().upper()
@@ -215,8 +218,11 @@ def main():
     logo.ax.xaxis.set_tick_params(pad=-1)
     
     fig.tight_layout()
-    output_fname = os.path.join(args.outdir, "{}.{}".format(args.name, args.out_format))
+    output_fname = os.path.join(args.outdir, f"{args.name}.{args.out_format}")
     plt.savefig(output_fname)
+    df.to_csv(os.path.join(args.outdir, f"{args.name}.csv"))
+    
+    logging.info("Done")
 
 
 if __name__ == "__main__":

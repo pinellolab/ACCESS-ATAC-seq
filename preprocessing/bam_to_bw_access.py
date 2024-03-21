@@ -10,7 +10,7 @@ import pyranges as pr
 import logging
 import subprocess as sp
 
-from utils import get_chrom_size_from_bam
+from utils import get_chrom_size_from_bam, revcomp
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -64,10 +64,10 @@ def parse_args():
 
 
 def get_edit_count(
+    bam: pysam.Samfile = None,
     chrom: str = None,
     start: int = None,
     end: int = None,
-    bam: pysam.Samfile = None,
 ) -> np.array:
     """
     Get Ddda editing counts for each position in a genomic region
@@ -75,7 +75,7 @@ def get_edit_count(
     Parameters
     ----------
     chrom : str
-        Chromosome anme
+        Chromosome name
     start : int
         Start position
     end : int
@@ -113,11 +113,13 @@ def get_edit_count(
 
 def output_count(bam, grs, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
-    bw_filename = os.path.join(out_dir, "{}.wig".format(out_name))
+    bw_filename = os.path.join(out_dir, "{}.bw".format(out_name))
 
     with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal_forward, signal_reverse = get_edit_count(chrom, start, end, bam)
+            signal_forward, signal_reverse = get_edit_count(
+                bam=bam, chrom=chrom, start=start, end=end
+            )
             signal = signal_forward + signal_reverse
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
@@ -131,16 +133,26 @@ def output_count(bam, grs, chrom_size_file, out_dir, out_name):
 
 def output_fraction(bam, grs, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
-    bw_filename = os.path.join(out_dir, "{}.wig".format(out_name))
+    bw_filename = os.path.join(out_dir, "{}.bw".format(out_name))
 
     with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             # get coverage
-            coverage = bam.count_coverage(chrom, start, end, quality_threshold=0)
+            # count_coverage returns a tuple of lists (A, C, G, T coverage lists),
+            # so we sum them to get total coverage per position
+            coverage = [
+                sum(base_coverage)
+                for base_coverage in zip(
+                    *bam.count_coverage(chrom, start, end, quality_threshold=0)
+                )
+            ]
+            coverage = np.array(coverage)
             coverage[np.isnan(coverage)] = 0
 
             # get edit counts
-            signal_forward, signal_reverse = get_edit_count(chrom, start, end, bam)
+            signal_forward, signal_reverse = get_edit_count(
+                bam=bam, chrom=chrom, start=start, end=end
+            )
             edit_count = signal_forward + signal_reverse
             edit_count[np.isnan(edit_count)] = 0
 
@@ -169,6 +181,7 @@ def main():
     args = parse_args()
 
     bam = pysam.Samfile(args.bam_file, "rb")
+
     if args.peak_file:
         logging.info(f"Loading genomic regions from {args.peak_file}")
         grs = pr.read_bed(args.peak_file)
@@ -179,8 +192,8 @@ def main():
 
     logging.info(f"Total of {len(grs)} regions")
 
-    # if output type is counts, then compute the raw edit count for each position
-    if args.out_type == "counts":
+    # if output type is count, then compute the raw edit count for each position
+    if args.out_type == "count":
         output_count(
             bam=bam,
             grs=grs,
