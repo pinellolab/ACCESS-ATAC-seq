@@ -8,7 +8,7 @@ import pysam
 import logging
 import numpy as np
 import pyranges as pr
-import subprocess
+import subprocess as sp
 
 
 logging.basicConfig(
@@ -25,23 +25,16 @@ def parse_args():
     )
 
     # Required parameters
-    parser.add_argument(
-        "--peak_file",
-        type=str,
-        default=None,
-        help=("BAM file containing reads. \n" "Default: None"),
-    )
+    parser.add_argument("--peak_file", type=str, default=None)
     parser.add_argument(
         "--ref_fasta",
         type=str,
         default=None,
-        help=("BAM file containing reads. \n" "Default: None"),
     )
     parser.add_argument(
         "--bias_table_file",
         type=str,
         default=None,
-        help=("BAM file containing reads. \n" "Default: None"),
     )
     parser.add_argument(
         "--chrom_size_file",
@@ -180,11 +173,11 @@ def main():
             f.write("\n")
 
     # convert to bigwig file
-    subprocess.run(["wigToBigWig", wig_filename, args.chrom_size_file, bw_filename])
-    subprocess.run(
+    sp.run(["wigToBigWig", wig_filename, args.chrom_size_file, bw_filename])
+    sp.run(
         ["wigToBigWig", wig_forward_filename, args.chrom_size_file, bw_forward_filename]
     )
-    subprocess.run(
+    sp.run(
         ["wigToBigWig", wig_reverse_filename, args.chrom_size_file, bw_reverse_filename]
     )
 

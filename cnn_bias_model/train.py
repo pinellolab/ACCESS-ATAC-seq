@@ -63,11 +63,21 @@ def parse_args():
         help="Bigwig file containing the raw signal for training",
     )
     parser.add_argument(
-        "--peak_file", type=str, default=None, help="BED file of input genomic regions"
+        "--train_regions",
+        type=str,
+        default=None,
+        help="BED file containing genomic regions for training",
+    )
+    parser.add_argument(
+        "--valid_regions",
+        type=str,
+        default=None,
+        help="BED file containing genomic regions for validation",
     )
     parser.add_argument(
         "--ref_fasta", type=str, default=None, help="FASTQ file for reference genome"
     )
+    parser.add_argument("--k", type=int, default=128, help="Input sequence size")
     parser.add_argument(
         "--epochs", type=int, default=200, help="Number of epochs for training"
     )
@@ -76,7 +86,7 @@ def parse_args():
     parser.add_argument("--out_dir", type=str, default=None, help="Output directory")
     parser.add_argument("--out_name", type=str, default=None, help="Output name")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--batch_size", type=int, default=128, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     return parser.parse_args()
 
 
@@ -90,10 +100,6 @@ def train(model, dataloader, criterion, optimizer, device):
 
         optimizer.zero_grad()
         loss.backward()
-
-        # clip gradient values
-        # clip_grad_value_(model.parameters(), 1.5)
-
         optimizer.step()
 
         train_loss += loss.item() / len(dataloader)
@@ -120,33 +126,39 @@ def main():
 
     logging.info("Loading input files")
     bw = pyBigWig.open(args.bw_file)
-    grs = pr.read_bed(args.peak_file)
     fasta = pysam.FastaFile(args.ref_fasta)
 
+    grs_train = pr.read_bed(args.train_regions)
+    grs_valid = pr.read_bed(args.valid_regions)
+
     logging.info("Preprocessing input regions")
-    grs = pad_and_split(grs, k=128)
+    grs_train = pad_and_split(grs_train, fasta_file=args.ref_fasta, k=args.k)
+    grs_valid = pad_and_split(grs_valid, fasta_file=args.ref_fasta, k=args.k)
 
     # split the regions for training and validation
-    grs_train = grs[grs.Chromosome.isin(chrom_train)]
-    grs_valid = grs[grs.Chromosome.isin(chrom_valid)]
+    # grs_train = grs[grs.Chromosome.isin(chrom_train)]
+    # grs_valid = grs[grs.Chromosome.isin(chrom_valid)]
 
     logging.info("Generating data for training and validation")
-    train_x = np.empty(shape=(len(grs_train), 128, 4), dtype=np.float32)
-    train_y = np.empty(shape=(len(grs_train), 128), dtype=np.float32)
+    train_x = np.empty(shape=(len(grs_train), args.k, 4), dtype=np.float32)
+    train_y = np.empty(shape=(len(grs_train), args.k), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(
         zip(grs_train.Chromosome, grs_train.Start, grs_train.End)
     ):
         # get DNA sequence
+        if start < 0:
+            continue
+        
         seq = str(fasta.fetch(chrom, start, end)).upper()
 
         # convert DNA sequence to one-hot encode
         train_x[i] = one_hot_encode(seq=seq)
         signal = np.array(bw.values(chrom, start, end))
         signal[np.isnan(signal)] = 0
-        train_y[i] = np.log(signal + 0.01)
+        train_y[i] = signal
 
-    valid_x = np.empty(shape=(len(grs_valid), 128, 4), dtype=np.float32)
-    valid_y = np.empty(shape=(len(grs_valid), 128), dtype=np.float32)
+    valid_x = np.empty(shape=(len(grs_valid), args.k, 4), dtype=np.float32)
+    valid_y = np.empty(shape=(len(grs_valid), args.k), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(
         zip(grs_valid.Chromosome, grs_valid.Start, grs_valid.End)
     ):
@@ -157,7 +169,10 @@ def main():
         valid_x[i] = one_hot_encode(seq=seq)
         signal = np.array(bw.values(chrom, start, end))
         signal[np.isnan(signal)] = 0
-        valid_y[i] = np.log(signal + 0.01)
+        valid_y[i] = signal
+
+    logging.info(f"Number of training: {len(grs_train)}")
+    logging.info(f"Number of validation: {len(grs_valid)}")
 
     train_dataloader = get_dataloader(
         x=train_x,
@@ -178,13 +193,13 @@ def main():
 
     # Setup model
     logging.info("Creating model")
-    model = BiasNet(seq_len=128)
+    model = BiasNet(seq_len=args.k)
     device = torch.device("cuda")
     model.to(device)
 
     # Setup loss and optimizer
     criterion = torch.nn.MSELoss()
-    optimizer = Adam(model.parameters(), lr=3e-04, weight_decay=1e-4)
+    optimizer = Adam(model.parameters(), lr=1e-04, weight_decay=1e-4)
     scheduler = ReduceLROnPlateau(optimizer, "min", min_lr=1e-5, patience=10)
 
     """ Train the model """

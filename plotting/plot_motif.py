@@ -8,13 +8,10 @@ import pyranges as pr
 import pysam
 import logging
 import logomaker
-import matplotlib
-
-matplotlib.rcParams['pdf.fonttype'] = 42
-
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+# plt.rcParams['pdf.fonttype'] = 42
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",

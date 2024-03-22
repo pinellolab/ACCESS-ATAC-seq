@@ -36,12 +36,15 @@ class BiasNet(nn.Module):
             nn.Dropout(0.5),
             nn.Linear(1024, self.seq_len),
         )
+        
+        self.output = nn.ReLU()
 
     def forward(self, x):
         x = x.permute(0, 2, 1)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.fc(x)
+        x = self.output(x)
 
         return x
 

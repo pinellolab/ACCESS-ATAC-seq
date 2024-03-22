@@ -2,8 +2,8 @@ import os
 import random
 import numpy as np
 import torch
-import pandas as pd
 import pyranges as pr
+import pyfaidx
 
 
 def set_seed(seed=42):
@@ -46,7 +46,7 @@ def one_hot_encode(seq):
     return vec
 
 
-def pad_and_split(grs: pr.PyRanges = None, k: int = 128):
+def pad_and_split(grs: pr.PyRanges = None, fasta_file: str = None, k: int = 1024):
     """
     This function pad the input regions
 
@@ -55,7 +55,7 @@ def pad_and_split(grs: pr.PyRanges = None, k: int = 128):
     grs : _type_
         _description_
     k : int, optional
-        _description_, by default 128
+        _description_, by default 1024
     """
     chroms, starts, ends = [], [], []
 
@@ -73,6 +73,11 @@ def pad_and_split(grs: pr.PyRanges = None, k: int = 128):
 
     grs = pr.from_dict({"Chromosome": chroms, "Start": starts, "End": ends})
 
+    # remove regions that are out-of-bounds of reference genome
+    grs = grs[grs.Start>=0]
+    pyf = pyfaidx.Fasta(fasta_file)
+    grs = pr.genomicfeatures.genome_bounds(grs, chromsizes=pyf, clip=False)
+    
     return grs
 
 

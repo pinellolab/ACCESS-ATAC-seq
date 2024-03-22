@@ -15,29 +15,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-chrom_valid = ["chr2", "chr7", "chr14", "chr20"]
-chrom_train = [
-    "chr1",
-    "chr3",
-    "chr4",
-    "chr5",
-    "chr6",
-    "chr8",
-    "chr9",
-    "chr10",
-    "chr11",
-    "chr12",
-    "chr13",
-    "chr15",
-    "chr16",
-    "chr17",
-    "chr18",
-    "chr19",
-    "chr21",
-    "chr22",
-    "chrX",
-]
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -65,7 +42,6 @@ def parse_args():
         help=("BAM file containing reads. \n" "Default: None"),
     )
     parser.add_argument("--k_mer", type=int, default=5)
-    parser.add_argument("--train", default=False, action="store_true")
     parser.add_argument(
         "--out_dir",
         type=str,
@@ -97,10 +73,6 @@ def main():
     fasta = pysam.FastaFile(args.ref_fasta)
     grs = pr.read_bed(args.bed_file)
 
-    # split the regions for training and validation
-    if args.train:
-        grs = grs[grs.Chromosome.isin(chrom_train)]
-
     logging.info(f"Total of {len(grs)} regions")
 
     alphabet = ["A", "C", "G", "T"]
@@ -110,6 +82,7 @@ def main():
     bias_dict = dict([(e, 0.0) for e in kmer_comb])
 
     for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+        # ger observed kmer
         for read in bam.fetch(reference=chrom, start=start, end=end):
             # get reference and query sequence.
             # for forward reads, it's from 5' to 3', for reverse reads, it's 3' to 5'
@@ -144,24 +117,31 @@ def main():
                 if obs_kmer in obs_kmer_dict:
                     obs_kmer_dict[obs_kmer] += 1
                     
-                # get background kmer
-                exp_kmer_forward, exp_kmer_reverse = None, None
-                try:
-                    exp_kmer_forward = str(fasta.fetch(chrom, p1, p2)).upper()
-                    exp_kmer_reverse = revcomp(exp_kmer_forward)
-                except:
-                    continue
-                
-                if exp_kmer_forward in exp_kmer_dict:
-                    exp_kmer_dict[exp_kmer_forward] += 1
-                    
-                if exp_kmer_reverse in exp_kmer_dict:
-                    exp_kmer_dict[exp_kmer_reverse] += 1
+        # get expected kmer
+        start = max(start - (args.k_mer // 2), 0)
+        ref_seq = str(fasta.fetch(chrom, start, end + (args.k_mer // 2))).upper()
+        
+        for i in range(len(ref_seq)):
+            exp_kmer_forward = ref_seq[i: i + args.k_mer]
+            exp_kmer_reverse = revcomp(exp_kmer_forward)
+            
+            if exp_kmer_forward in exp_kmer_dict.keys():
+                exp_kmer_dict[exp_kmer_forward] += 1
+                exp_kmer_dict[exp_kmer_reverse] += 1
+
+    # Normalized the observed and expected kmer table as a distribution
+    total_count = sum(obs_kmer_dict.values())
+    for kmer in obs_kmer_dict.keys():
+        obs_kmer_dict[kmer] = obs_kmer_dict[kmer] / total_count
+        
+    total_count = sum(exp_kmer_dict.values())
+    for kmer in exp_kmer_dict.keys():
+        exp_kmer_dict[kmer] = exp_kmer_dict[kmer] / total_count
 
     # Normalize the kmer table as obs/exp
-    # total = sum(obs_kmer_dict.values())
     for kmer in bias_dict.keys():
-        bias_dict[kmer] = round(obs_kmer_dict[kmer] / exp_kmer_dict[kmer], 6) 
+        if exp_kmer_dict[kmer] > 0:
+            bias_dict[kmer] = round(obs_kmer_dict[kmer] / exp_kmer_dict[kmer], 6) 
 
     # Write the dictionary to a text file
     output_filename = os.path.join(args.out_dir, f"{args.out_name}.obs.txt")
