@@ -44,7 +44,6 @@ def parse_args():
             "Default: None"
         ),
     )
-    parser.add_argument("--ext", type=int, default=50)
     parser.add_argument(
         "--out_dir",
         type=str,
