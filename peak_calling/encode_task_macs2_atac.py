@@ -77,29 +77,29 @@ def macs2(ta, chrsz, gensz, pval_thresh, smooth_win, cap_num_peak,
         )
     )
 
-    # run_shell_cmd(
-    #     'LC_COLLATE=C sort -k 8gr,8gr {sort_param} "{prefix}_peaks.narrowPeak" | '
-    #     'awk \'BEGIN{{OFS="\\t"}}'
-    #     '{{$4="Peak_"NR; if ($2<0) $2=0; if ($3<0) $3=0; if ($10==-1) '
-    #     '$10=$2+int(($3-$2+1)/2.0); print $0}}\' > {npeak_tmp}'.format(
-    #         sort_param=get_gnu_sort_param(mem_gb * 1024 ** 3, ratio=0.5),
-    #         prefix=prefix,
-    #         npeak_tmp=npeak_tmp,
-    #     )
-    # )
+    run_shell_cmd(
+        'LC_COLLATE=C sort -k 8gr,8gr {sort_param} "{prefix}_peaks.narrowPeak" | '
+        'awk \'BEGIN{{OFS="\\t"}}'
+        '{{$4="Peak_"NR; if ($2<0) $2=0; if ($3<0) $3=0; if ($10==-1) '
+        '$10=$2+int(($3-$2+1)/2.0); print $0}}\' > {npeak_tmp}'.format(
+            sort_param=get_gnu_sort_param(mem_gb * 1024 ** 3, ratio=0.5),
+            prefix=prefix,
+            npeak_tmp=npeak_tmp,
+        )
+    )
 
-    # run_shell_cmd(
-    #     'head -n {cap_num_peak} {npeak_tmp} > {npeak_tmp2}'.format(
-    #         cap_num_peak=cap_num_peak,
-    #         npeak_tmp=npeak_tmp,
-    #         npeak_tmp2=npeak_tmp2,
-    #     )
-    # )
+    run_shell_cmd(
+        'head -n {cap_num_peak} {npeak_tmp} > {npeak_tmp2}'.format(
+            cap_num_peak=cap_num_peak,
+            npeak_tmp=npeak_tmp,
+            npeak_tmp2=npeak_tmp2,
+        )
+    )
 
     # clip peaks between 0-chromSize.
-    # bed_clip(npeak_tmp2, chrsz, npeak)
+    bed_clip(npeak_tmp2, chrsz, npeak)
 
-    # rm_f([npeak_tmp, npeak_tmp2])
+    rm_f([npeak_tmp, npeak_tmp2])
 
     # # remove temporary files
     # temp_files.append("{prefix}_*".format(prefix=prefix))

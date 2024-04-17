@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = msg)
 
     # Adding optional argument
-    parser.add_argument("bam", help = "Path to the coordinate-sorted bam file.")
+    parser.add_argument("--bam", help = "Path to the coordinate-sorted bam file.")
     parser.add_argument("-o", "--output", help = "Path to the fragments output file.")
     parser.add_argument("--prefix", help = "Prefix for the metrics output file.")
     parser.add_argument("--shift_plus", help = "Tn5 coordinate adjustment for the plus strand.", type = int, default = 4)

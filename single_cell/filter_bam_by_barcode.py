@@ -38,15 +38,16 @@ def main():
     )
 
     logging.info("Reading barcode file")
-    df = pd.read_csv(args.barcode_file, sep=",")
-
-    logging.info("Adding barcode to bam file")
+    df = pd.read_csv(args.barcode_file)
+    sel_barcodes = df['barcode'].tolist()
+    
+    logging.info(f"Number of valid barcodes: {len(sel_barcodes)}")
+    
     iter = infile.fetch(until_eof=True)
     for read in iter:
-        
-        read.set_tag(args.bc_tag, dict_barcode[read.qname], 
-                     replace=False)
-        outfile.write(read)
+        barcode = read.get_tag(args.bc_tag)
+        if barcode in sel_barcodes:
+            outfile.write(read)
 
     infile.close()
     outfile.close()

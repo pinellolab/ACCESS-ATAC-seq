@@ -33,7 +33,7 @@ def main():
     bam = pysam.AlignmentFile(args.bam_file, "rb")
 
     barcode_dict = dict()
-    logging.info("Adding barcode to bam file")
+    logging.info("Counting number of edited reads")
     iter = bam.fetch(until_eof=True)
     for read in iter:
         # check if there are any edit events
@@ -45,24 +45,21 @@ def main():
             continue
 
         barcode = read.get_tag(args.bc_tag)
-
         if barcode not in barcode_dict:
-            barcode_dict[barcode] = {"n_reads": 0, "n_edited_reads": 0}
+            barcode_dict[barcode] = {"non_edited_reads": 0, 
+                                     "edited_reads": 0}
 
         # no editting
         if refer_seq == query_seq:
-            barcode_dict[barcode]["n_reads"] += 1
+            barcode_dict[barcode]["non_edited_reads"] += 1
         else:
-            for i in range(len(refer_seq)):
-                if refer_seq[i] == "C" and query_seq[i] == "T":
-                    barcode_dict[barcode]["n_edited_reads"] += 1
-                elif refer_seq[i] == "G" and query_seq[i] == "A":
-                    barcode_dict[barcode]["n_edited_reads"] += 1
+            barcode_dict[barcode]["edited_reads"] += 1
 
     bam.close()
 
     # output
     df = pd.DataFrame(data=barcode_dict).transpose()
+    df['total_reads'] = df['non_edited_reads'] + df['edited_reads']
     df.to_csv(f'{args.out_dir}/{args.out_name}.csv')
     logging.info(f"Done!")
 
