@@ -5,11 +5,11 @@ warnings.filterwarnings("ignore")
 import os
 import numpy as np
 import argparse
+import pandas as pd
 import pyranges as pr
 import pyBigWig
 import logging
 import subprocess as sp
-
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -67,10 +67,26 @@ def parse_args():
 def main():
     args = parse_args()
 
-    logging.info(f"Loading genomic regions from {args.peak_file}")
-    grs = pr.read_bed(args.peak_file)
-    grs = grs.extend(args.peak_extend)
-    grs = grs.merge()
+    # read chromosome size as PyRanges object
+    df = pd.read_csv(args.chrom_size_file, header=False)
+    df.columns = ["Chromosome", "End"]
+    df["Start"] = 0
+    df = df[["Chromosome", "Start", "End"]]
+    df["End"] = df["End"] - 1
+    chromsizes = pr.from_dict(df)
+    
+    if args.peak_file:
+        logging.info(f"Loading genomic regions from {args.peak_file}")
+        grs = pr.read_bed(args.peak_file)
+        grs = grs.extend(args.peak_extend)
+        grs = grs.merge()
+
+        # make sure regions are not out-of-bound of chromosome size
+        grs = pr.gf.genome_bounds(grs, chromsizes, clip=True)
+        
+    else:
+        # use whole genome
+        grs = chromsizes
 
     logging.info(f"Total of {len(grs)} regions")
 
@@ -78,7 +94,7 @@ def main():
     bw_raw = pyBigWig.open(args.bw_raw)
     bw_bias = pyBigWig.open(args.bw_bias)
 
-    # generate expected signal based on 100bp bins
+    # generate expected signal based on 101bp bins
     logging.info("Generating expected signal!")
     exp_wig_filename = f"{args.out_dir}/{args.out_name}.exp.wig"
     norm_wig_filename = f"{args.out_dir}/{args.out_name}.norm.wig"

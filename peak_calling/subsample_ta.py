@@ -25,7 +25,7 @@ def parse_args():
 
     # Required parameters
     parser.add_argument(
-        "--bam_file",
+        "--ta_file",
         type=str,
         default=None,
         help=("BAM file containing the aligned reads. \n" "Default: None"),

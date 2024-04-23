@@ -63,11 +63,25 @@ def macs2(ta, chrsz, gensz, pval_thresh, smooth_win, cap_num_peak,
     shiftsize = -int(round(float(smooth_win)/2.0))
     temp_files = []
 
+    # run_shell_cmd(
+    #     'macs2 callpeak '
+    #     '-t {ta} -f BED -n {prefix} -g {gensz} -p {pval_thresh} '
+    #     '--shift {shiftsize} --extsize {extsize} '
+    #     '--nomodel -B --SPMR --keep-dup all --call-summits'.format(
+    #         ta=ta,
+    #         prefix=prefix,
+    #         gensz=gensz,
+    #         pval_thresh=pval_thresh,
+    #         shiftsize=shiftsize,
+    #         extsize=smooth_win,
+    #     )
+    # )
+
     run_shell_cmd(
         'macs2 callpeak '
         '-t {ta} -f BED -n {prefix} -g {gensz} -p {pval_thresh} '
         '--shift {shiftsize} --extsize {extsize} '
-        '--nomodel -B --SPMR --keep-dup all --call-summits'.format(
+        '--nomodel -B --keep-dup all'.format(
             ta=ta,
             prefix=prefix,
             gensz=gensz,
@@ -76,6 +90,7 @@ def macs2(ta, chrsz, gensz, pval_thresh, smooth_win, cap_num_peak,
             extsize=smooth_win,
         )
     )
+
 
     run_shell_cmd(
         'LC_COLLATE=C sort -k 8gr,8gr {sort_param} "{prefix}_peaks.narrowPeak" | '
