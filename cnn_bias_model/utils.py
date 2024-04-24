@@ -19,6 +19,11 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
 
 
+def revcomp(s):
+    rev_dict = dict([("A", "T"), ("T", "A"), ("C", "G"), ("G", "C"), ("N", "N")])
+    return "".join([rev_dict[e] for e in s[::-1]])
+
+
 def one_hot_encode(seq):
     """
     Given a DNA sequence, return its one-hot encoding

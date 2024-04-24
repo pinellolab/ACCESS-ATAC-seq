@@ -8,9 +8,9 @@ import torch
 import logging
 import pyranges as pr
 import pysam
-
+import pandas as pd
 from model import BiasNet
-from utils import one_hot_encode
+from utils import one_hot_encode, revcomp
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -45,9 +45,19 @@ def parse_args():
 def main():
     args = parse_args()
 
-    logging.info("Loading input files")
-    grs = pr.read_bed(args.regions)
     fasta = pysam.FastaFile(args.ref_fasta)
+
+    if args.regions:
+        logging.info("Loading input regions")
+        grs = pr.read_bed(args.regions)
+    else:
+        logging.info("Using whole genome")
+        df = pd.read_csv(args.chrom_size_file, header=None, sep="\t")
+        df.columns = ["Chromosome", "End"]
+        df["Start"] = 0
+        df = df[["Chromosome", "Start", "End"]]
+        df["End"] = df["End"] - 1
+        grs = pr.from_dict(df)
 
     # Setup model
     logging.info("Creating model")
@@ -70,15 +80,25 @@ def main():
             for i in range(n + 1):
                 if start + (i + 1) * args.k > end:
                     seq = str(fasta.fetch(chrom, start + i * args.k, end)).upper()
-                    seq = seq + ('N' * (args.k - len(seq)))
+                    seq = seq + ("N" * (args.k - len(seq)))
                 else:
                     seq = str(
                         fasta.fetch(chrom, start + i * args.k, start + (i + 1) * args.k)
                     ).upper()
 
+                # forward prediction
                 x = torch.tensor(one_hot_encode(seq=seq))
                 x = x.unsqueeze(dim=0)
-                pred = model(x.to(device)).detach().cpu().view(-1).numpy()
+                pred_forward = model(x.to(device)).detach().cpu().view(-1).numpy()
+                
+                # reverse strand prediction
+                seq = revcomp(seq)
+                x = torch.tensor(one_hot_encode(seq=seq))
+                x = x.unsqueeze(dim=0)
+                pred_reverse = model(x.to(device)).detach().cpu().view(-1).numpy()
+                
+                # get average prediction
+                pred = (pred_forward + pred_reverse) / 2
                 preds.append(pred)
 
             pred = np.concatenate(preds).tolist()
