@@ -2,7 +2,8 @@ from torch import nn
 
 
 class TFBSNet(nn.Module):
-    def __init__(self, seq_len=201, n_channels=5, n_filters=32, kernel_size=5) -> None:
+    def __init__(self, seq_len=201, n_channels=5, 
+                 n_filters=32, kernel_size=5) -> None:
         super().__init__()
 
         self.seq_len = seq_len

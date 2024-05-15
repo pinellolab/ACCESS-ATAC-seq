@@ -10,7 +10,7 @@ import pyranges as pr
 import logging
 import subprocess as sp
 
-from utils import get_chrom_size_from_bam, revcomp
+from utils import get_chrom_size_from_bam
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -36,6 +36,12 @@ def parse_args():
             "If none, will use the whole genome as input regions. \n"
             "Default: None"
         ),
+    )
+    parser.add_argument(
+        "--min_coverage",
+        type=int,
+        default=10,
+        help="Minimum coverage when estimating edit fraction. Default: 10",
     )
     parser.add_argument(
         "--chrom_size_file",
@@ -131,7 +137,7 @@ def output_count(bam, grs, chrom_size_file, out_dir, out_name):
     os.remove(wig_filename)
 
 
-def output_fraction(bam, grs, chrom_size_file, out_dir, out_name):
+def output_fraction(bam, grs, min_coverage, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
     bw_filename = os.path.join(out_dir, "{}.bw".format(out_name))
 
@@ -149,6 +155,9 @@ def output_fraction(bam, grs, chrom_size_file, out_dir, out_name):
             coverage = np.array(coverage)
             coverage[np.isnan(coverage)] = 0
 
+            # remove low coverage nucleotide
+            coverage[coverage < min_coverage] = 0
+            
             # get edit counts
             signal_forward, signal_reverse = get_edit_count(
                 bam=bam, chrom=chrom, start=start, end=end
@@ -205,6 +214,7 @@ def main():
         output_fraction(
             bam=bam,
             grs=grs,
+            min_coverage=args.min_coverage,
             chrom_size_file=args.chrom_size_file,
             out_dir=args.out_dir,
             out_name=args.out_name,
