@@ -2,12 +2,12 @@ from torch import nn
 
 
 class TFBSNet(nn.Module):
-    def __init__(self, seq_len=201, n_channels=5, 
+    def __init__(self, seq_len=200, n_channels=6, 
                  n_filters=32, kernel_size=5) -> None:
         super().__init__()
 
         self.seq_len = seq_len
-        self.n_channels = n_channels  # 5 for ATAC-seq, 6 for ACCESS-ATAC-seq
+        self.n_channels = n_channels  # 6 for ATAC-seq, 8 for ACCESS-ATAC-seq
         self.n_filters = n_filters
         self.kernel_size = kernel_size
 
@@ -44,8 +44,7 @@ class TFBSNet(nn.Module):
             nn.ReLU(),
             nn.BatchNorm1d(128),
             nn.Dropout(0.5),
-            nn.Linear(128, 1),
-            nn.Sigmoid(),
+            nn.Linear(128, 1)
         )
 
     def forward(self, x):
@@ -63,35 +62,33 @@ if __name__ == "__main__":
     model = TFBSNet()
 
     import torch
+    import numpy as np
     from utils import random_seq, one_hot_encode
 
-    seq1 = random_seq(201)
-    seq2 = random_seq(201)
+    seq1 = random_seq(200)
+    seq2 = random_seq(200)
     x1 = one_hot_encode(seq1)
     x2 = one_hot_encode(seq2)
 
+    signal_raw = np.expand_dims(np.random.rand(200), axis=1)
+    signal_bias = np.expand_dims(np.random.rand(200), axis=1)
+    x1 = np.concatenate([x1, signal_bias, signal_raw], axis=1)
+    x2 = np.concatenate([x2, signal_bias, signal_raw], axis=1)
+    
     x1 = torch.tensor(x1).float()
     x2 = torch.tensor(x2).float()
 
-    print(x1.shape)
-    # add ATAC-seq signal
-    x = torch.rand(128)
-    x1 = torch.cat(
-        (
-            x1,
-            x2,
-        )
-    )
-
+    # # add ATAC-seq signal
     x1 = x1.unsqueeze(dim=0)
     x2 = x2.unsqueeze(dim=0)
 
     print(x1.shape)
+    print(x2.shape)
 
     x = torch.cat((x1, x2), dim=0)
 
     print(x.shape)
 
-    # x = model(x)
+    x = model(x)
 
-    # print(x)
+    print(x)

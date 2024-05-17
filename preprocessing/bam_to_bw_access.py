@@ -1,16 +1,15 @@
+from utils import get_chrom_size_from_bam
+import subprocess as sp
+import logging
+import pyranges as pr
+import pysam
+import argparse
+import numpy as np
+import os
 import warnings
 
 warnings.filterwarnings("ignore")
 
-import os
-import numpy as np
-import argparse
-import pysam
-import pyranges as pr
-import logging
-import subprocess as sp
-
-from utils import get_chrom_size_from_bam
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(message)s",
@@ -26,7 +25,8 @@ def parse_args():
     )
 
     # Required parameters
-    parser.add_argument("--bam_file", type=str, default=None, help="input BAM file")
+    parser.add_argument("--bam_file", type=str,
+                        default=None, help="input BAM file")
     parser.add_argument(
         "--peak_file",
         type=str,
@@ -37,6 +37,7 @@ def parse_args():
             "Default: None"
         ),
     )
+    parser.add_argument("--extend_size", type=int, default=0)
     parser.add_argument(
         "--min_coverage",
         type=int,
@@ -74,6 +75,7 @@ def get_edit_count(
     chrom: str = None,
     start: int = None,
     end: int = None,
+    extend_size: int = 0
 ) -> np.array:
     """
     Get Ddda editing counts for each position in a genomic region
@@ -90,8 +92,7 @@ def get_edit_count(
         BAM file
     """
 
-    signal_forward = np.zeros(shape=(end - start))
-    signal_reverse = np.zeros(shape=(end - start))
+    signal = np.zeros(shape=(end - start))
 
     for read in bam.fetch(reference=chrom, start=start, end=end):
         refer_seq = read.get_reference_sequence().upper()
@@ -107,26 +108,35 @@ def get_edit_count(
             # C -> T at forward strand
             if refer_seq[i] == "C" and query_seq[i] == "T":
                 if start <= edit_site < end:
-                    signal_forward[edit_site - start] += 1
+                    if extend_size > 0:
+                        _start = max(0, edit_site - start - extend_size)
+                        _end = min(edit_site - start + extend_size, end)
+                        signal[_start: _end] += 1
+                    else:
+                        signal[edit_site - start] += 1
 
             # C -> T at reverse strand
             elif refer_seq[i] == "G" and query_seq[i] == "A":
                 if start <= edit_site < end:
-                    signal_reverse[edit_site - start] += 1
+                    if extend_size > 0:
+                        _start = max(0, edit_site - start - extend_size)
+                        _end = min(edit_site - start + extend_size, end)
+                        signal[_start: _end] += 1
+                    else:
+                        signal[edit_site - start] += 1
 
-    return signal_forward, signal_reverse
+    return signal
 
 
-def output_count(bam, grs, chrom_size_file, out_dir, out_name):
+def output_count(bam, grs, extend_size, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
     bw_filename = os.path.join(out_dir, "{}.bw".format(out_name))
 
     with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            signal_forward, signal_reverse = get_edit_count(
-                bam=bam, chrom=chrom, start=start, end=end
+            signal = get_edit_count(
+                bam=bam, chrom=chrom, start=start, end=end, extend_size=extend_size
             )
-            signal = signal_forward + signal_reverse
 
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             f.write("\n".join(str(e) for e in signal))
@@ -137,7 +147,7 @@ def output_count(bam, grs, chrom_size_file, out_dir, out_name):
     os.remove(wig_filename)
 
 
-def output_fraction(bam, grs, min_coverage, chrom_size_file, out_dir, out_name):
+def output_fraction(bam, grs, extend_size, min_coverage, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
     bw_filename = os.path.join(out_dir, "{}.bw".format(out_name))
 
@@ -157,7 +167,7 @@ def output_fraction(bam, grs, min_coverage, chrom_size_file, out_dir, out_name):
 
             # remove low coverage nucleotide
             coverage[coverage < min_coverage] = 0
-            
+
             # get edit counts
             signal_forward, signal_reverse = get_edit_count(
                 bam=bam, chrom=chrom, start=start, end=end
@@ -206,6 +216,7 @@ def main():
         output_count(
             bam=bam,
             grs=grs,
+            extend_size=args.extend_size,
             chrom_size_file=args.chrom_size_file,
             out_dir=args.out_dir,
             out_name=args.out_name,

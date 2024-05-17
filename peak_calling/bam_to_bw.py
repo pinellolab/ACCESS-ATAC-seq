@@ -25,7 +25,9 @@ def parse_args():
 
     # Required parameters
     parser.add_argument("--bam_file", type=str, default=None)
+    parser.add_argument("--bed_file", type=str, default=None)
     parser.add_argument("--type", type=str, default='atac')
+    parser.add_argument("--bin_size", type=int, default=100)
     parser.add_argument("--out_dir", type=str, default=None)
     parser.add_argument("--out_name", type=str, default=None)
     parser.add_argument("--chrom_size_file", type=str, default=None)
@@ -145,24 +147,31 @@ def main():
     args = parse_args()
 
     bam = pysam.Samfile(args.bam_file, "rb")
-    grs = get_chrom_size_from_bam(bam=bam)
+    if args.bed_file:
+        logging.info(f"Loading genomic regions from {args.bed_file}")
+        grs = pr.read_bed(args.bed_file)
+        grs = grs.merge()
+    else:
+        logging.info(f"Using whole genome")
+        grs = get_chrom_size_from_bam(bam=bam)
 
     logging.info("Converting BAM to WIG...")
     wig_filename = os.path.join(args.out_dir, f"{args.out_name}.wig")
     bw_filename = os.path.join(args.out_dir, f"{args.out_name}.bw")
 
+    bs = args.bin_size
+
     # Open a new bigwig file for writing
     with open(wig_filename, "w") as f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            # get signal using a chunk size of 10kb
-            if (end - start) % 10000 == 0:
-                n_batchs = (end - start) // 10000
+            if (end - start) % bs == 0:
+                n_batchs = (end - start) // bs
             else:
-                n_batchs = (end - start) // 10000 + 1
+                n_batchs = (end - start) // bs + 1
 
             for i in range(n_batchs):
-                _start = start + i * 10000
-                _end = min(start + (i + 1) * 10000, end)
+                _start = start + i * bs
+                _end = min(start + (i + 1) * bs, end)
 
                 if args.type == 'atac':
                     signal = get_atac(
@@ -180,8 +189,11 @@ def main():
 
                     signal = atac_signal + access_signal
 
+                _signal = np.empty(_end - _start)
+                _signal.fill(np.sum(signal))
+
                 f.write(f"fixedStep chrom={chrom} start={_start+1} step=1\n")
-                f.write("\n".join(str(e) for e in signal))
+                f.write("\n".join(str(e) for e in _signal))
                 f.write("\n")
 
     logging.info("Conveting wig to bigwig!")
