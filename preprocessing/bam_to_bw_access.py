@@ -147,7 +147,7 @@ def output_count(bam, grs, extend_size, chrom_size_file, out_dir, out_name):
     os.remove(wig_filename)
 
 
-def output_fraction(bam, grs, extend_size, min_coverage, chrom_size_file, out_dir, out_name):
+def output_fraction(bam, grs, min_coverage, chrom_size_file, out_dir, out_name):
     wig_filename = os.path.join(out_dir, "{}.wig".format(out_name))
     bw_filename = os.path.join(out_dir, "{}.bw".format(out_name))
 
@@ -169,11 +169,9 @@ def output_fraction(bam, grs, extend_size, min_coverage, chrom_size_file, out_di
             coverage[coverage < min_coverage] = 0
 
             # get edit counts
-            signal_forward, signal_reverse = get_edit_count(
+            edit_count = get_edit_count(
                 bam=bam, chrom=chrom, start=start, end=end
             )
-            edit_count = signal_forward + signal_reverse
-            edit_count[np.isnan(edit_count)] = 0
 
             # compute edit fraction
             edit_fraction = np.divide(

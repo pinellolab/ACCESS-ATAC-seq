@@ -2,7 +2,7 @@ from torch import nn
 
 
 class TFBSNet(nn.Module):
-    def __init__(self, seq_len=200, n_channels=6, 
+    def __init__(self, seq_len=128, n_channels=6, 
                  n_filters=32, kernel_size=5) -> None:
         super().__init__()
 
@@ -40,11 +40,11 @@ class TFBSNet(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(448, 128),
+            nn.Linear(160, 64),
             nn.ReLU(),
-            nn.BatchNorm1d(128),
+            nn.BatchNorm1d(64),
             nn.Dropout(0.5),
-            nn.Linear(128, 1)
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
@@ -65,13 +65,13 @@ if __name__ == "__main__":
     import numpy as np
     from utils import random_seq, one_hot_encode
 
-    seq1 = random_seq(200)
-    seq2 = random_seq(200)
+    seq1 = random_seq(128)
+    seq2 = random_seq(128)
     x1 = one_hot_encode(seq1)
     x2 = one_hot_encode(seq2)
 
-    signal_raw = np.expand_dims(np.random.rand(200), axis=1)
-    signal_bias = np.expand_dims(np.random.rand(200), axis=1)
+    signal_raw = np.expand_dims(np.random.rand(128), axis=1)
+    signal_bias = np.expand_dims(np.random.rand(128), axis=1)
     x1 = np.concatenate([x1, signal_bias, signal_raw], axis=1)
     x2 = np.concatenate([x2, signal_bias, signal_raw], axis=1)
     

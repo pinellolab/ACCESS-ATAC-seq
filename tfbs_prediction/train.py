@@ -114,10 +114,6 @@ def main():
     scheduler = ReduceLROnPlateau(optimizer, "min", min_lr=1e-5, patience=10)
 
     """ Train the model """
-    # os.makedirs(args.log_dir, exist_ok=True)
-    # log_dir = os.path.join(args.log_dir, f"{args.log_name}")
-    # tb_writer = SummaryWriter(log_dir=log_dir)
-
     logging.info("Training started")
     model_path = os.path.join(args.out_dir, f"{args.out_name}.pth")
     best_score = np.Inf
@@ -133,12 +129,7 @@ def main():
         valid_loss = valid(
             dataloader=valid_dataloader, model=model, criterion=criterion, device=device
         )
-
-        # save log
-        # tb_writer.add_scalar("Training loss", train_loss, epoch)
-        # tb_writer.add_scalar("Valid loss", valid_loss, epoch)
-        # tb_writer.add_scalar("Learning rate", optimizer.param_groups[0]["lr"], epoch)
-
+        
         # save model if find a better validation score
         if valid_loss < best_score:
             best_score = valid_loss

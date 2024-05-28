@@ -7,6 +7,7 @@ import pysam
 import logging
 import pyBigWig
 import pyranges as pr
+from sklearn.preprocessing import StandardScaler
 
 from utils import one_hot_encode
 
@@ -104,47 +105,39 @@ def main():
 
     # extend 100 bps to both sides
     mid = (grs.End + grs.Start) // 2
-    grs.Start = mid - 100
-    grs.End = mid + 100
+    grs.Start = mid - 64
+    grs.End = mid + 64
 
-    # logging.info("Generating data")
-    dat = np.empty(shape=(len(grs), 200, 6), dtype=np.float32)
-
+    logging.info("Reading cutting counts")
+    counts = np.empty(shape=(len(grs), 128), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
-        signal_raw = np.array(bw_raw.values(chrom, start, end))
+        counts[i] = np.array(bw_raw.values(chrom, start, end))
+    counts[np.isnan(counts)] = 0
+    
+    # normalize the counts
+    scaler = StandardScaler()
+    norm_counts = scaler.fit_transform(counts)
+
+    dat = np.empty(shape=(len(grs), 128, 6), dtype=np.float32)
+    for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
         signal_bias = np.array(bw_bias.values(chrom, start, end))
-
-        # make no NAN
-        signal_raw[np.isnan(signal_raw)] = 0
         signal_bias[np.isnan(signal_bias)] = 0
-
-        signal_raw = np.expand_dims(signal_raw, axis=1)
         signal_bias = np.expand_dims(signal_bias, axis=1)
-
-        # signal_normal = get_norm_signal(
-        #     bw_raw=bw_raw,
-        #     bw_bias=bw_bias,
-        #     chrom=chrom,
-        #     start=start,
-        #     end=end,
-        #     half_window=half_window,
-        #     pseudo_count=args.pseudo_count,
-        # )
-        # signal = np.concatenate([signal_normal, signal_total])
-        # signal_bias = np.expand_dims(signal, axis=1)
 
         seq = str(fasta.fetch(chrom, start, end)).upper()
         x = one_hot_encode(seq=seq)
+        
+        signal_raw = np.expand_dims(norm_counts[i], axis=1) 
 
         # assemble data
-        dat[i] = np.concatenate([x, signal_bias, signal_raw], axis=1)
+        dat[i] = np.concatenate([x, signal_raw, signal_bias], axis=1)
 
     # save data
     np.savez_compressed(
         f"{args.out_dir}/{args.out_name}.npz", x=dat, y=np.array(grs.ThickStart)
     )
 
-    # logging.info("Finished!")
+    logging.info("Done!")
 
 
 if __name__ == "__main__":
