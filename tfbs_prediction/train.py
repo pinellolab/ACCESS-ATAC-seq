@@ -28,6 +28,7 @@ def parse_args():
     # Required parameters
     parser.add_argument("--train_data", type=str, default=None)
     parser.add_argument("--valid_data", type=str, default=None)
+    parser.add_argument("--data", type=str, default=None)
     parser.add_argument("--assay", type=str, default='atac')
     parser.add_argument(
         "--epochs", type=int, default=200, help="Number of epochs for training"
@@ -76,30 +77,39 @@ def main():
     args = parse_args()
 
     set_seed(args.seed)
-    
+
     logging.info("Loading input files")
-    train_data = np.load(args.train_data)
-    valid_data = np.load(args.valid_data)
+    data = np.load(args.data)
+
+    if args.batch_size > len(data['y_train']):
+        train_bs = len(data['y_train'])
+    else:
+        train_bs = args.batch_size
+        
+    if args.batch_size > len(data['y_valid']):
+        valid_bs = len(data['y_valid'])
+    else:
+        valid_bs = args.batch_size
 
     train_dataloader = get_dataloader(
-        x=train_data['x'],
-        y=train_data['y'],
-        batch_size=args.batch_size,
+        x=data['x_train'],
+        y=data['y_train'],
+        batch_size=train_bs,
         drop_last=True,
         shuffle=True,
         train=True,
     )
     valid_dataloader = get_dataloader(
-        x=valid_data['x'],
-        y=valid_data['y'],
-        batch_size=args.batch_size,
+        x=data['x_valid'],
+        y=data['y_valid'],
+        batch_size=valid_bs,
         drop_last=False,
         shuffle=False,
         train=True,
     )
 
     # Setup model
-    logging.info("Creating model")
+    logging.info(f"Creating model for {args.assay}")
     if args.assay == 'atac':
         model = TFBSNet(n_channels=6)
     elif args.assay == 'access_atac':
@@ -129,11 +139,10 @@ def main():
         valid_loss = valid(
             dataloader=valid_dataloader, model=model, criterion=criterion, device=device
         )
-        
+
         # save model if find a better validation score
         if valid_loss < best_score:
             best_score = valid_loss
-            logging.info(f"epoch: {epoch}, best score: {best_score}")
             state = {
                 "state_dict": model.state_dict(),
                 "train_loss": train_loss,
@@ -141,6 +150,8 @@ def main():
                 "epoch": epoch,
             }
             torch.save(state, model_path)
+            
+        logging.info(f"epoch: {epoch}, valid score: {valid_loss}, best score: {best_score}")
         scheduler.step(valid_loss)
 
     logging.info(f"Training finished")

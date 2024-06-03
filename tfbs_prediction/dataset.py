@@ -27,7 +27,7 @@ def get_dataloader(
     x: np.array,
     y: Optional[np.array] = None,
     batch_size: int = 64,
-    num_workers: int = 2,
+    num_workers: int = 10,
     drop_last: bool = False,
     shuffle: bool = True,
     train: bool = True,

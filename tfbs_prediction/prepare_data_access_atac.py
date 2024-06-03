@@ -7,6 +7,7 @@ import pysam
 import logging
 import pyBigWig
 import pyranges as pr
+from sklearn.preprocessing import StandardScaler
 
 from utils import one_hot_encode
 
@@ -85,38 +86,48 @@ def main():
     fasta = pysam.FastaFile(args.ref_fasta)
     grs = pr.read_bed(args.regions)
 
-    # extend 100 bps to both sides
+    # extend 64 bps to both sides
     mid = (grs.End + grs.Start) // 2
-    grs.Start = mid - 100
-    grs.End = mid + 100
+    grs.Start = mid - 64
+    grs.End = mid + 64
+
+    logging.info("Reading cutting counts")
+    atac_counts = np.empty(shape=(len(grs), 128), dtype=np.float32)
+    access_frac = np.empty(shape=(len(grs), 128), dtype=np.float32)
+    for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
+        atac_counts[i] = np.array(atac_bw_raw.values(chrom, start, end))
+        access_frac[i] = np.array(access_bw_raw.values(chrom, start, end))
+
+    atac_counts[np.isnan(atac_counts)] = 0
+    access_frac[np.isnan(access_frac)] = 0
+
+    # normalize the counts
+    scaler = StandardScaler()
+    atac_counts = scaler.fit_transform(atac_counts)
+    access_frac = scaler.fit_transform(access_frac)
 
     # logging.info("Generating data")
-    dat = np.empty(shape=(len(grs), 200, 8), dtype=np.float32)
-
+    dat = np.empty(shape=(len(grs), 128, 8), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
-        atac_signal_raw = np.array(atac_bw_raw.values(chrom, start, end))
-        access_signal_raw = np.array(access_bw_raw.values(chrom, start, end))
-
         atac_bias = np.array(atac_bw_bias.values(chrom, start, end))
         access_bias = np.array(access_bw_bias.values(chrom, start, end))
 
         # remove NAN
-        atac_signal_raw[np.isnan(atac_signal_raw)] = 0
-        access_signal_raw[np.isnan(access_signal_raw)] = 0
         atac_bias[np.isnan(atac_bias)] = 0
         access_bias[np.isnan(access_bias)] = 0
 
-        atac_signal_raw = np.expand_dims(atac_signal_raw, axis=1)
         atac_bias = np.expand_dims(atac_bias, axis=1)
-        access_signal_raw = np.expand_dims(access_signal_raw, axis=1)
         access_bias = np.expand_dims(access_bias, axis=1)
+
+        atac_signal = np.expand_dims(atac_counts[i], axis=1)
+        access_signal = np.expand_dims(access_frac[i], axis=1)
 
         seq = str(fasta.fetch(chrom, start, end)).upper()
         x = one_hot_encode(seq=seq)
 
         # assemble data
         dat[i] = np.concatenate(
-            [x, atac_bias, atac_signal_raw, access_bias, access_signal_raw], axis=1)
+            [x, atac_bias, atac_signal, access_bias, access_signal], axis=1)
 
     # save data
     np.savez_compressed(

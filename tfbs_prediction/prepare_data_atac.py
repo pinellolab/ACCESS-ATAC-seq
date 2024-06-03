@@ -44,14 +44,12 @@ def parse_args():
         default=None,
         help=("Bigwig file containing the bias signal. \n" "Default: None"),
     )
-    parser.add_argument(
-        "--regions",
-        type=str,
-        default=None,
-        help="BED file containing genomic regions",
-    )
-    parser.add_argument("--window", type=int, default=100)
+    parser.add_argument("--train_regions", type=str, default=None)
+    parser.add_argument("--valid_regions", type=str, default=None)
+    parser.add_argument("--test_regions", type=str, default=None)
     parser.add_argument("--pseudo_count", type=float, default=1)
+    parser.add_argument("--window", type=int, default=100)
+    parser.add_argument("--standardize", action="store_true")
     parser.add_argument(
         "--ref_fasta", type=str, default=None, help="FASTQ file for reference genome"
     )
@@ -101,7 +99,11 @@ def main():
     bw_raw = pyBigWig.open(args.bw_raw)
     bw_bias = pyBigWig.open(args.bw_bias)
     fasta = pysam.FastaFile(args.ref_fasta)
-    grs = pr.read_bed(args.regions)
+    grs_train = pr.read_bed(args.train_regions)
+    grs_valid = pr.read_bed(args.valid_regions)
+    grs_test = pr.read_bed(args.test_regions)
+
+    grs = pr.concat([grs_train, grs_valid, grs_test])
 
     # extend 100 bps to both sides
     mid = (grs.End + grs.Start) // 2
@@ -112,29 +114,46 @@ def main():
     counts = np.empty(shape=(len(grs), 128), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
         counts[i] = np.array(bw_raw.values(chrom, start, end))
+
     counts[np.isnan(counts)] = 0
-    
+
     # normalize the counts
-    scaler = StandardScaler()
-    norm_counts = scaler.fit_transform(counts)
+    if args.standardize:
+        logging.info("Standardize features")
+        scaler = StandardScaler()
+        counts = scaler.fit_transform(counts)
+
+    counts[np.isnan(counts)] = 0
 
     dat = np.empty(shape=(len(grs), 128, 6), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
         signal_bias = np.array(bw_bias.values(chrom, start, end))
+
         signal_bias[np.isnan(signal_bias)] = 0
         signal_bias = np.expand_dims(signal_bias, axis=1)
 
         seq = str(fasta.fetch(chrom, start, end)).upper()
         x = one_hot_encode(seq=seq)
-        
-        signal_raw = np.expand_dims(norm_counts[i], axis=1) 
+
+        signal_raw = np.expand_dims(counts[i], axis=1)
 
         # assemble data
         dat[i] = np.concatenate([x, signal_raw, signal_bias], axis=1)
 
+    # split the data
+    x_train = dat[:len(grs_train)]
+    x_valid = dat[len(grs_train):(len(grs_train) + len(grs_valid))]
+    x_test = dat[(len(grs_train) + len(grs_valid)):]
+
     # save data
     np.savez_compressed(
-        f"{args.out_dir}/{args.out_name}.npz", x=dat, y=np.array(grs.ThickStart)
+        f"{args.out_dir}/{args.out_name}.npz",
+        x_train=x_train,
+        x_valid=x_valid,
+        x_test=x_test,
+        y_train=np.array(grs_train.ThickStart),
+        y_valid=np.array(grs_valid.ThickStart),
+        y_test=np.array(grs_test.ThickStart)
     )
 
     logging.info("Done!")

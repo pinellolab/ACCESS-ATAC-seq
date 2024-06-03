@@ -57,8 +57,8 @@ def main():
     model.eval()
 
     logging.info("Predicting started")
-    preds = np.empty(shape=data['x'].shape[0])
-    for i, x in enumerate(data['x']):
+    preds = np.empty(shape=data['x_test'].shape[0])
+    for i, x in enumerate(data['x_test']):
         x = torch.tensor(x)
         x = x.unsqueeze(dim=0)
         pred = model(x.to(device)).detach().cpu().view(-1)
@@ -68,7 +68,7 @@ def main():
 
     logging.info(f"Predicting finished")
 
-    df = pd.DataFrame(data={"target": data['y'],
+    df = pd.DataFrame(data={"target": data['y_test'],
                             "pred": preds})
 
     df.to_csv(f'{args.out_dir}/{args.out_name}.csv', index=False)
