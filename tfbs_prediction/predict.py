@@ -25,12 +25,9 @@ def parse_args():
 
     # Required parameters
     parser.add_argument("--data", type=str, default=None)
-    parser.add_argument("--model", type=str, default=None)
+    parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--assay", type=str, default='atac')
-    parser.add_argument("--out_dir", type=str,
-                        default=None, help="Output directory")
-    parser.add_argument("--out_name", type=str,
-                        default=None, help="Output name")
+    parser.add_argument("--pred_path", type=str, default=None)
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     return parser.parse_args()
 
@@ -40,7 +37,7 @@ def main():
 
     set_seed(args.seed)
 
-    logging.info("Loading input files")
+    logging.info("Loading data")
     data = np.load(args.data)
 
     # Setup model
@@ -50,15 +47,15 @@ def main():
     elif args.assay == 'access_atac':
         model = TFBSNet(n_channels=8)
 
-    state_dict = torch.load(args.model)
+    state_dict = torch.load(args.model_path)
     model.load_state_dict(state_dict["state_dict"])
     device = torch.device("cuda")
     model.to(device)
     model.eval()
 
     logging.info("Predicting started")
-    preds = np.empty(shape=data['x_test'].shape[0])
-    for i, x in enumerate(data['x_test']):
+    preds = np.empty(shape=data['x'].shape[0])
+    for i, x in enumerate(data['x']):
         x = torch.tensor(x)
         x = x.unsqueeze(dim=0)
         pred = model(x.to(device)).detach().cpu().view(-1)
@@ -68,10 +65,10 @@ def main():
 
     logging.info(f"Predicting finished")
 
-    df = pd.DataFrame(data={"target": data['y_test'],
+    df = pd.DataFrame(data={"target": data['y'],
                             "pred": preds})
 
-    df.to_csv(f'{args.out_dir}/{args.out_name}.csv', index=False)
+    df.to_csv(args.pred_path, index=False)
 
 
 if __name__ == "__main__":

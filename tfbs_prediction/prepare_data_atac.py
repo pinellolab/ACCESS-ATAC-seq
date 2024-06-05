@@ -44,9 +44,7 @@ def parse_args():
         default=None,
         help=("Bigwig file containing the bias signal. \n" "Default: None"),
     )
-    parser.add_argument("--train_regions", type=str, default=None)
-    parser.add_argument("--valid_regions", type=str, default=None)
-    parser.add_argument("--test_regions", type=str, default=None)
+    parser.add_argument("--regions", type=str, default=None)
     parser.add_argument("--pseudo_count", type=float, default=1)
     parser.add_argument("--window", type=int, default=100)
     parser.add_argument("--standardize", action="store_true")
@@ -95,15 +93,11 @@ def get_norm_signal(bw_raw, bw_bias, chrom, start, end, half_window, pseudo_coun
 def main():
     args = parse_args()
 
-    # logging.info("Loading input files")
+    logging.info("Loading input files")
     bw_raw = pyBigWig.open(args.bw_raw)
     bw_bias = pyBigWig.open(args.bw_bias)
     fasta = pysam.FastaFile(args.ref_fasta)
-    grs_train = pr.read_bed(args.train_regions)
-    grs_valid = pr.read_bed(args.valid_regions)
-    grs_test = pr.read_bed(args.test_regions)
-
-    grs = pr.concat([grs_train, grs_valid, grs_test])
+    grs = pr.read_bed(args.regions)
 
     # extend 100 bps to both sides
     mid = (grs.End + grs.Start) // 2
@@ -127,33 +121,25 @@ def main():
 
     dat = np.empty(shape=(len(grs), 128, 6), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
-        signal_bias = np.array(bw_bias.values(chrom, start, end))
+        signal_raw = np.array(bw_raw.values(chrom, start, end))
+        signal_raw[np.isnan(signal_raw)] = 0
+        signal_raw = np.expand_dims(signal_raw, axis=1)
 
+        signal_bias = np.array(bw_bias.values(chrom, start, end))
         signal_bias[np.isnan(signal_bias)] = 0
         signal_bias = np.expand_dims(signal_bias, axis=1)
 
         seq = str(fasta.fetch(chrom, start, end)).upper()
         x = one_hot_encode(seq=seq)
 
-        signal_raw = np.expand_dims(counts[i], axis=1)
-
         # assemble data
         dat[i] = np.concatenate([x, signal_raw, signal_bias], axis=1)
-
-    # split the data
-    x_train = dat[:len(grs_train)]
-    x_valid = dat[len(grs_train):(len(grs_train) + len(grs_valid))]
-    x_test = dat[(len(grs_train) + len(grs_valid)):]
 
     # save data
     np.savez_compressed(
         f"{args.out_dir}/{args.out_name}.npz",
-        x_train=x_train,
-        x_valid=x_valid,
-        x_test=x_test,
-        y_train=np.array(grs_train.ThickStart),
-        y_valid=np.array(grs_valid.ThickStart),
-        y_test=np.array(grs_test.ThickStart)
+        x=dat,
+        y=np.array(grs.ThickStart)
     )
 
     logging.info("Done!")

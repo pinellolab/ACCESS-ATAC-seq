@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import numpy as np
+import pandas as pd
 import warnings
 import torch
 import logging
@@ -28,15 +29,12 @@ def parse_args():
     # Required parameters
     parser.add_argument("--train_data", type=str, default=None)
     parser.add_argument("--valid_data", type=str, default=None)
-    parser.add_argument("--data", type=str, default=None)
     parser.add_argument("--assay", type=str, default='atac')
     parser.add_argument(
         "--epochs", type=int, default=200, help="Number of epochs for training"
     )
-    parser.add_argument("--out_dir", type=str,
-                        default=None, help="Output directory")
-    parser.add_argument("--out_name", type=str,
-                        default=None, help="Output name")
+    parser.add_argument("--model_path", type=str, default=None)
+    parser.add_argument("--log_path", type=str, default=None)
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--batch_size", type=int,
                         default=48, help="Batch size")
@@ -79,30 +77,21 @@ def main():
     set_seed(args.seed)
 
     logging.info("Loading input files")
-    data = np.load(args.data)
-
-    if args.batch_size > len(data['y_train']):
-        train_bs = len(data['y_train'])
-    else:
-        train_bs = args.batch_size
-        
-    if args.batch_size > len(data['y_valid']):
-        valid_bs = len(data['y_valid'])
-    else:
-        valid_bs = args.batch_size
+    train_data = np.load(args.train_data)
+    valid_data = np.load(args.valid_data)
 
     train_dataloader = get_dataloader(
-        x=data['x_train'],
-        y=data['y_train'],
-        batch_size=train_bs,
+        x=train_data['x'],
+        y=train_data['y'],
+        batch_size=args.batch_size,
         drop_last=True,
         shuffle=True,
         train=True,
     )
     valid_dataloader = get_dataloader(
-        x=data['x_valid'],
-        y=data['y_valid'],
-        batch_size=valid_bs,
+        x=valid_data['x'],
+        y=valid_data['y'],
+        batch_size=args.batch_size,
         drop_last=False,
         shuffle=False,
         train=True,
@@ -110,7 +99,7 @@ def main():
 
     # Setup model
     logging.info(f"Creating model for {args.assay}")
-    if args.assay == 'atac':
+    if args.assay == 'atac' or args.assay == 'access':
         model = TFBSNet(n_channels=6)
     elif args.assay == 'access_atac':
         model = TFBSNet(n_channels=8)
@@ -121,13 +110,13 @@ def main():
     # Setup loss and optimizer
     criterion = torch.nn.BCEWithLogitsLoss()
     optimizer = Adam(model.parameters(), lr=1e-04, weight_decay=1e-4)
-    scheduler = ReduceLROnPlateau(optimizer, "min", min_lr=1e-5, patience=10)
+    scheduler = ReduceLROnPlateau(optimizer, "min", min_lr=1e-5, patience=5)
 
     """ Train the model """
     logging.info("Training started")
-    model_path = os.path.join(args.out_dir, f"{args.out_name}.pth")
     best_score = np.Inf
 
+    epochs, train_losses, valid_losses = [], [], []
     for epoch in range(args.epochs):
         train_loss = train(
             dataloader=train_dataloader,
@@ -149,11 +138,21 @@ def main():
                 "valid_loss": valid_loss,
                 "epoch": epoch,
             }
-            torch.save(state, model_path)
-            
-        logging.info(f"epoch: {epoch}, valid score: {valid_loss}, best score: {best_score}")
+            torch.save(state, args.model_path)
+
+        logging.info(
+            f"epoch: {epoch}, train: {train_loss:.5f}, valid: {valid_loss:.5f}, best: {best_score:.5f}")
         scheduler.step(valid_loss)
 
+        epochs.append(epoch)
+        train_losses.append(train_loss)
+        valid_losses.append(valid_loss)
+
+    df = pd.DataFrame(data={"epoch": epochs,
+                            "train_loss": train_losses,
+                            "valid_loss": valid_losses})
+
+    df.to_csv(args.log_path, index=False)
     logging.info(f"Training finished")
 
 

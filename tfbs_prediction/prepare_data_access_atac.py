@@ -92,35 +92,26 @@ def main():
     grs.End = mid + 64
 
     logging.info("Reading cutting counts")
-    atac_counts = np.empty(shape=(len(grs), 128), dtype=np.float32)
-    access_frac = np.empty(shape=(len(grs), 128), dtype=np.float32)
-    for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
-        atac_counts[i] = np.array(atac_bw_raw.values(chrom, start, end))
-        access_frac[i] = np.array(access_bw_raw.values(chrom, start, end))
-
-    atac_counts[np.isnan(atac_counts)] = 0
-    access_frac[np.isnan(access_frac)] = 0
-
-    # normalize the counts
-    scaler = StandardScaler()
-    atac_counts = scaler.fit_transform(atac_counts)
-    access_frac = scaler.fit_transform(access_frac)
 
     # logging.info("Generating data")
     dat = np.empty(shape=(len(grs), 128, 8), dtype=np.float32)
     for i, (chrom, start, end) in enumerate(zip(grs.Chromosome, grs.Start, grs.End)):
+        atac_signal = np.array(atac_bw_raw.values(chrom, start, end))
+        access_signal = np.array(access_bw_raw.values(chrom, start, end))
+
         atac_bias = np.array(atac_bw_bias.values(chrom, start, end))
         access_bias = np.array(access_bw_bias.values(chrom, start, end))
 
         # remove NAN
+        atac_signal[np.isnan(atac_signal)] = 0
+        access_signal[np.isnan(access_signal)] = 0
+        atac_signal = np.expand_dims(atac_signal, axis=1)
+        access_signal = np.expand_dims(access_signal, axis=1)
+
         atac_bias[np.isnan(atac_bias)] = 0
         access_bias[np.isnan(access_bias)] = 0
-
         atac_bias = np.expand_dims(atac_bias, axis=1)
         access_bias = np.expand_dims(access_bias, axis=1)
-
-        atac_signal = np.expand_dims(atac_counts[i], axis=1)
-        access_signal = np.expand_dims(access_frac[i], axis=1)
 
         seq = str(fasta.fetch(chrom, start, end)).upper()
         x = one_hot_encode(seq=seq)
@@ -131,7 +122,9 @@ def main():
 
     # save data
     np.savez_compressed(
-        f"{args.out_dir}/{args.out_name}.npz", x=dat, y=np.array(grs.ThickStart)
+        f"{args.out_dir}/{args.out_name}.npz",
+        x=dat,
+        y=np.array(grs.ThickStart)
     )
 
     logging.info("Finished!")
