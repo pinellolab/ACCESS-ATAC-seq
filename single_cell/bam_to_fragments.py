@@ -20,8 +20,8 @@ def bam_to_frag(in_path, out_path, barcode_tag="CB", shift_plus=4, shift_minus=-
                 continue # ignore reverse (coordinate-wise second) read in pair
 
             chromosome = read.reference_name
-            start = read.reference_start + shift_plus
-            end = read.reference_start + read.template_length + shift_minus
+            start = read.reference_start
+            end = read.reference_start + read.template_length
             cell_barcode = read.get_tag(barcode_tag)
             # assert(read.next_reference_start >= read.reference_start) ####
             data = (chromosome, start, end, cell_barcode, 1)
@@ -46,8 +46,6 @@ if __name__ == '__main__':
     parser.add_argument("--bam", help = "Path to the coordinate-sorted bam file.")
     parser.add_argument("-o", "--output", help = "Path to the fragments output file.")
     parser.add_argument("--prefix", help = "Prefix for the metrics output file.")
-    parser.add_argument("--shift_plus", help = "Tn5 coordinate adjustment for the plus strand.", type = int, default = 4)
-    parser.add_argument("--shift_minus", help = "Tn5 coordinate adjustment for the minus strand.", type = int, default = -4)
     parser.add_argument("--bc_tag", help = "Specify the tag containing the cell barcode.", default="CB")
 
     # Read arguments from command line
@@ -65,5 +63,4 @@ if __name__ == '__main__':
 
     bc_tag = args.bc_tag
 
-
-    bam_to_frag(args.bam, out_path, bc_tag, shift_plus=args.shift_plus, shift_minus=args.shift_minus)
+    bam_to_frag(args.bam, out_path, bc_tag)

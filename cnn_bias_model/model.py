@@ -29,11 +29,11 @@ class BiasNet(nn.Module):
             nn.Linear(928, 1024),
             nn.ReLU(),
             nn.BatchNorm1d(1024),
-            nn.Dropout(0.5),
+            nn.Dropout(0.25),
             nn.Linear(1024, 1024),
             nn.ReLU(),
             nn.BatchNorm1d(1024),
-            nn.Dropout(0.5),
+            nn.Dropout(0.25),
             nn.Linear(1024, self.seq_len),
         )
         

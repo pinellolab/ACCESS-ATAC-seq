@@ -116,7 +116,7 @@ def main():
     logging.info("Training started")
     best_score = np.Inf
 
-    epochs, train_losses, valid_losses = [], [], []
+    epochs, train_losses, valid_losses, best_scores = [], [], [], []
     for epoch in range(args.epochs):
         train_loss = train(
             dataloader=train_dataloader,
@@ -139,6 +139,14 @@ def main():
                 "epoch": epoch,
             }
             torch.save(state, args.model_path)
+            # Reset patience counter
+            patience = 10
+        else:
+            # early stop
+            patience -= 1
+            if patience == 0:
+                logging.info("Early stop!")
+                break
 
         logging.info(
             f"epoch: {epoch}, train: {train_loss:.5f}, valid: {valid_loss:.5f}, best: {best_score:.5f}")
@@ -147,10 +155,12 @@ def main():
         epochs.append(epoch)
         train_losses.append(train_loss)
         valid_losses.append(valid_loss)
+        best_scores.append(best_score)
 
     df = pd.DataFrame(data={"epoch": epochs,
                             "train_loss": train_losses,
-                            "valid_loss": valid_losses})
+                            "valid_loss": valid_losses,
+                            "best_loss": best_scores})
 
     df.to_csv(args.log_path, index=False)
     logging.info(f"Training finished")

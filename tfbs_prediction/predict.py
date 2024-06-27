@@ -42,7 +42,7 @@ def main():
 
     # Setup model
     logging.info("Creating model")
-    if args.assay == 'atac':
+    if args.assay == 'atac' or args.assay == 'access':
         model = TFBSNet(n_channels=6)
     elif args.assay == 'access_atac':
         model = TFBSNet(n_channels=8)

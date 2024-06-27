@@ -89,18 +89,16 @@ def main():
                 # forward prediction
                 x = torch.tensor(one_hot_encode(seq=seq))
                 x = x.unsqueeze(dim=0)
-                pred_forward = model(x.to(device)).detach().cpu().view(-1).numpy()
+                pred = model(x.to(device)).detach().cpu().view(-1).numpy()
                 
-                # reverse strand prediction
-                seq = revcomp(seq)
-                x = torch.tensor(one_hot_encode(seq=seq))
-                x = x.unsqueeze(dim=0)
-                pred_reverse = model(x.to(device)).detach().cpu().view(-1).numpy()
+                # for A, T or N, set the prediction as zero
+                seq = np.array(list(seq))
+                pred[np.where(seq == 'A')] = 0
+                pred[np.where(seq == 'T')] = 0
+                pred[np.where(seq == 'N')] = 0
                 
-                # get average prediction
-                pred = (pred_forward + pred_reverse) / 2
                 preds.append(pred)
-
+                
             pred = np.concatenate(preds).tolist()
             pred = pred[: (end - start)]
             f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
