@@ -1,5 +1,4 @@
 import pysam
-import pandas as pd
 import argparse
 import logging
 import warnings
@@ -15,14 +14,12 @@ logging.basicConfig(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="This script adds barcode to bam file",
+        description="This script filters reads by alignment score",
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
     # Required parameters
     parser.add_argument("--bam_file", type=str, default=None)
-    parser.add_argument("--barcode_file", type=str, default=None)
-    parser.add_argument("--bc_tag", type=str, default="CB")
     parser.add_argument("--out_dir", type=str, default=None)
     parser.add_argument("--out_name", type=str, default=None)
     return parser.parse_args()
@@ -36,17 +33,18 @@ def main():
         f"{args.out_dir}/{args.out_name}.bam", "wb", template=infile
     )
 
-    logging.info("Reading barcode file")
-    df = pd.read_csv(args.barcode_file, compression="gzip", sep=",")
-    dict_barcode = dict(zip(df['Identifier'], df['Barcode']))
-
-    del df
-
-    logging.info("Adding barcode to bam file")
+    logging.info("Filtering reads by alignment score")
     iter = infile.fetch(until_eof=True)
     for read in iter:
-        read.set_tag(args.bc_tag, dict_barcode[read.qname], replace=False)
-        outfile.write(read)
+
+        try:
+            align_score = read.get_tag('AS')
+        except KeyError:
+            align_score = -10000
+
+        # only output best alignment score
+        if align_score == 0:
+            outfile.write(read)
 
     infile.close()
     outfile.close()
