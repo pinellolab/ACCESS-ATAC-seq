@@ -30,14 +30,11 @@ def parse_args():
     parser.add_argument("--train_data", type=str, default=None)
     parser.add_argument("--valid_data", type=str, default=None)
     parser.add_argument("--assay", type=str, default='atac')
-    parser.add_argument(
-        "--epochs", type=int, default=200, help="Number of epochs for training"
-    )
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--log_path", type=str, default=None)
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--batch_size", type=int,
-                        default=48, help="Batch size")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--batch_size", type=int, default=48)
     return parser.parse_args()
 
 
@@ -103,6 +100,8 @@ def main():
         model = TFBSNet(n_channels=6)
     elif args.assay == 'access_atac':
         model = TFBSNet(n_channels=8)
+    elif args.assay == 'dna':
+        model = TFBSNet(n_channels=4)
 
     device = torch.device("cuda")
     model.to(device)
@@ -114,7 +113,7 @@ def main():
 
     """ Train the model """
     logging.info("Training started")
-    best_score = np.Inf
+    best_score = np.inf
 
     epochs, train_losses, valid_losses, best_scores = [], [], [], []
     for epoch in range(args.epochs):

@@ -55,7 +55,6 @@ def main():
     mu, std = norm.fit(fp_exp)
 
     logging.info(f"Null distribution of footprint score: mean: {mu}, std: {std}")
-
     wig_filename = os.path.join(args.out_dir, "{}.pvalue.wig".format(args.out_name))
     bw_filename = os.path.join(args.out_dir, "{}.pvalue.bw".format(args.out_name))
 

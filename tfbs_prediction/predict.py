@@ -46,6 +46,8 @@ def main():
         model = TFBSNet(n_channels=6)
     elif args.assay == 'access_atac':
         model = TFBSNet(n_channels=8)
+    elif args.assay == 'dna':
+        model = TFBSNet(n_channels=4)
 
     state_dict = torch.load(args.model_path)
     model.load_state_dict(state_dict["state_dict"])

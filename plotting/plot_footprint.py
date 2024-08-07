@@ -57,7 +57,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--extend", type=int, default=100, help=("Extend the regions. Default: 100")
+        "--extend", type=int, default=50, help=("Extend the regions. Default: 100")
     )
 
     parser.add_argument(
@@ -154,8 +154,8 @@ def main():
     x = np.linspace(start, end, num=window_size)
 
     plt.close("all")
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(x, signal)
+    fig, ax = plt.subplots(figsize=(4, 5))
+    ax.plot(x, signal, color="#4daf4a")
 
     ax.text(
         0.15,
@@ -195,7 +195,7 @@ def main():
     ax.set_yticks([])
     fig.tight_layout()
 
-    output_filename = os.path.join(args.out_dir, "{}.png".format(args.out_name))
+    output_filename = os.path.join(args.out_dir, "{}.pdf".format(args.out_name))
     plt.savefig(output_filename)
 
 

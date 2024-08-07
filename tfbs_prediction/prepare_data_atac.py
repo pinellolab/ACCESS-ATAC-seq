@@ -58,38 +58,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_norm_signal(bw_raw, bw_bias, chrom, start, end, half_window, pseudo_count):
-    signal_raw = bw_raw.values(chrom, start - half_window, end + half_window)
-    signal_bias = bw_bias.values(chrom, start - half_window, end + half_window)
-
-    signal_raw = np.array(signal_raw)
-    signal_bias = np.array(signal_bias)
-
-    signal_raw[np.isnan(signal_raw)] = 0
-    signal_bias[np.isnan(signal_bias)] = 0
-
-    # get expected signal
-    signal_exp = np.zeros(shape=(end - start))
-    for i in range(half_window, len(signal_raw) - half_window):
-        total_signal = np.sum(signal_raw[i - half_window: i + half_window])
-        total_bias = np.sum(signal_bias[i - half_window: i + half_window])
-
-        if total_bias == 0:
-            signal_exp[i - half_window] = 0
-        else:
-            signal_exp[i - half_window] = total_signal * \
-                signal_bias[i] / total_bias
-
-    # normalized signal = obs/exp
-    signal_norm = np.divide(
-        signal_raw[half_window:-half_window] +
-        pseudo_count, signal_exp + pseudo_count
-    )
-    signal_norm = np.log2(signal_norm + 0.1)
-
-    return signal_norm
-
-
 def main():
     args = parse_args()
 
