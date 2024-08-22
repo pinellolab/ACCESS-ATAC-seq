@@ -1,6 +1,6 @@
 import os
 import pyranges as pr
-
+import numpy as np
 import argparse
 import logging
 from scipy.stats import false_discovery_control
@@ -23,7 +23,7 @@ def parse_args():
 
     # Required parameters
     parser.add_argument("--bw_file", type=str, default=None)
-    parser.add_argument("--fdr", type=float, default=0.01)
+    parser.add_argument("--fdr", type=float, default=0.1)
     parser.add_argument("--out_dir", type=str, default=None)
     parser.add_argument("--out_name", type=str, default=None)
     return parser.parse_args()
@@ -35,9 +35,10 @@ def main():
 
     logging.info(f"Filtering footprints by FDR: {args.fdr}")
 
-    grs.pvalue = 10 ** (-grs.Value - 1e-08)
-    grs.fdr = false_discovery_control(grs.pvalue, method="bh")
-    grs = grs[grs.fdr <= args.fdr]
+    # grs.pvalue = 10 ** (-grs.Value)
+    
+    # grs.fdr = false_discovery_control(grs.pvalue, method="bh")
+    grs = grs[grs.Value > -np.log10(args.fdr)]
     grs = grs.extend(5)
     grs = grs.merge()
 

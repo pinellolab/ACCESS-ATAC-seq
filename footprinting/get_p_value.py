@@ -44,17 +44,16 @@ def main():
     grs = pr.read_bed(args.peak_file)
     grs = grs.merge()
 
-    logging.info(f"Building background model for footprint score")
-    fp_exp_list = []
-    for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-        fp_exp = np.array(bw_exp.values(chrom, start, end))
-        fp_exp_list.append(fp_exp)
+    # logging.info(f"Building background model for footprint score")
+    # fp_exp_list = []
+    # for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
+    #     fp_exp = np.array(bw_exp.values(chrom, start, end))
+    #     fp_exp_list.append(fp_exp)
 
-    fp_exp = np.concatenate(fp_exp_list)
-    fp_exp[np.isnan(fp_exp)] = 0
-    mu, std = norm.fit(fp_exp)
+    # fp_exp = np.concatenate(fp_exp_list)
+    # fp_exp[np.isnan(fp_exp)] = 0
+    # mu, std = norm.fit(fp_exp)
 
-    logging.info(f"Null distribution of footprint score: mean: {mu}, std: {std}")
     wig_filename = os.path.join(args.out_dir, "{}.pvalue.wig".format(args.out_name))
     bw_filename = os.path.join(args.out_dir, "{}.pvalue.bw".format(args.out_name))
 
@@ -63,6 +62,11 @@ def main():
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             fp_obs = np.array(bw_obs.values(chrom, start, end))
             fp_obs[np.isnan(fp_obs)] = 0
+            
+            fp_exp = np.array(bw_exp.values(chrom, start, end))
+            fp_exp[np.isnan(fp_exp)] = 0
+            mu, std = norm.fit(fp_exp)
+            
             p_values = norm.sf(fp_obs, loc=mu, scale=std)
 
             masked_array = np.ma.masked_equal(p_values, 0)

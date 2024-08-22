@@ -70,12 +70,12 @@ def compute_fp_score(
     fp_scores = np.zeros(peak_len)
 
     for i in range(extend, len(signal) - extend):
-        fp_signal = signal[i - fp_window // 2 : i + fp_window // 2]
+        fp_signal = signal[i - fp_window // 2: i + fp_window // 2]
         left_flank_signal = signal[
-            i - fp_window // 2 - flank_window : i - fp_window // 2
+            i - fp_window // 2 - flank_window: i - fp_window // 2
         ]
         right_flank_signal = signal[
-            i + fp_window // 2 : i + fp_window // 2 + flank_window
+            i + fp_window // 2: i + fp_window // 2 + flank_window
         ]
 
         flank_signal = np.concatenate([left_flank_signal, right_flank_signal])
@@ -92,9 +92,6 @@ def main():
     bw_exp = pyBigWig.open(args.bw_exp_file)
 
     extend = args.fp_window // 2 + args.flank_window
-
-    rng = np.random.default_rng()
-
     logging.info(f"Loading genomic regions from {args.peak_file}")
     grs = pr.read_bed(args.peak_file)
     grs = grs.merge()
@@ -105,19 +102,24 @@ def main():
     logging.info(f"Total of {len(grs)} regions")
 
     # compute footprint score per-nucleotide
-    obs_wig_filename = os.path.join(args.out_dir, "{}.obs.fs.wig".format(args.out_name))
-    obs_bw_filename = os.path.join(args.out_dir, "{}.obs.fs.bw".format(args.out_name))
-    exp_wig_filename = os.path.join(args.out_dir, "{}.exp.fs.wig".format(args.out_name))
-    exp_bw_filename = os.path.join(args.out_dir, "{}.exp.fs.bw".format(args.out_name))
-    signal_wig_filename = os.path.join(
-        args.out_dir, "{}.norm.wig".format(args.out_name)
-    )
-    signal_bw_filename = os.path.join(args.out_dir, "{}.norm.bw".format(args.out_name))
+    obs_wig_filename = os.path.join(
+        args.out_dir, "{}.obs.fs.wig".format(args.out_name))
+    obs_bw_filename = os.path.join(
+        args.out_dir, "{}.obs.fs.bw".format(args.out_name))
+    exp_wig_filename = os.path.join(
+        args.out_dir, "{}.exp.fs.wig".format(args.out_name))
+    exp_bw_filename = os.path.join(
+        args.out_dir, "{}.exp.fs.bw".format(args.out_name))
+    bc_wig_filename = os.path.join(
+        args.out_dir, "{}.bc.fs.wig".format(args.out_name))
+    bc_bw_filename = os.path.join(
+        args.out_dir, "{}.bc.fs.bw".format(args.out_name))
 
     logging.info(f"Calculating footprint score per-nucleotide")
+
     with open(obs_wig_filename, "w") as obs_f, open(
         exp_wig_filename, "w"
-    ) as exp_f, open(signal_wig_filename, "w") as norm_f:
+    ) as exp_f, open(bc_wig_filename, "w") as bc_f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
             _start = start - extend - args.smooth_window // 2
             _end = end + extend + args.smooth_window // 2
@@ -127,40 +129,40 @@ def main():
 
             # smooth the observed and expected signal by moving average
             w = np.ones(args.smooth_window)
-            signal_obs_smooth = np.convolve(w / w.sum(), signal_obs, mode="valid")
-            signal_exp_smooth = np.convolve(w / w.sum(), signal_exp, mode="valid")
-            signal_norm = signal_obs_smooth - signal_exp_smooth
+            signal_obs_smooth = np.convolve(
+                w / w.sum(), signal_obs, mode="valid")
+            signal_exp_smooth = np.convolve(
+                w / w.sum(), signal_exp, mode="valid")
+
+            # normalize the signal by the 99-th quantile
+            signal_obs_smooth = signal_obs_smooth / \
+                np.quantile(signal_obs, 0.99)
+            signal_exp_smooth = signal_exp_smooth / \
+                np.quantile(signal_exp, 0.99)
 
             # compute footprint score per-nucleotide
-            # fp_socre = mean(flank signal) - mean(footprint signal)
             obs_fp_scores = compute_fp_score(
-                signal=signal_norm,
+                signal=signal_obs_smooth,
                 peak_len=end - start,
                 extend=extend,
                 fp_window=args.fp_window,
                 flank_window=args.flank_window,
             )
-
-            norm_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
-            norm_f.write(
-                "\n".join(
-                    str(e) for e in signal_norm[extend : len(signal_norm) - extend]
-                )
-            )
-            norm_f.write("\n")
 
             # We also need to estimate background footprint score per nucleotide,
             # so we can perform statistical test to get p-value.
             # To do this, we randomly shuffle the input signal, and then compute the
             # footprint score again.
             exp_fp_scores = compute_fp_score(
-                signal=rng.permutation(signal_norm),
+                signal=signal_exp_smooth,
                 peak_len=end - start,
                 extend=extend,
                 fp_window=args.fp_window,
                 flank_window=args.flank_window,
             )
 
+            bc_fp_score = obs_fp_scores - exp_fp_scores
+            
             obs_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             obs_f.write("\n".join(str(e) for e in obs_fp_scores))
             obs_f.write("\n")
@@ -168,16 +170,19 @@ def main():
             exp_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             exp_f.write("\n".join(str(e) for e in exp_fp_scores))
             exp_f.write("\n")
+            
+            bc_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
+            bc_f.write("\n".join(str(e) for e in bc_fp_score))
+            bc_f.write("\n")
 
     # convert to bigwig file
     sp.run(["wigToBigWig", obs_wig_filename, args.chrom_size_file, obs_bw_filename])
     sp.run(["wigToBigWig", exp_wig_filename, args.chrom_size_file, exp_bw_filename])
-    sp.run(
-        ["wigToBigWig", signal_wig_filename, args.chrom_size_file, signal_bw_filename]
-    )
+    sp.run(["wigToBigWig", bc_wig_filename, args.chrom_size_file, bc_bw_filename])
+    
     os.remove(obs_wig_filename)
     os.remove(exp_wig_filename)
-    os.remove(signal_wig_filename)
+    os.remove(bc_wig_filename)
 
     logging.info(f"Done!")
 
