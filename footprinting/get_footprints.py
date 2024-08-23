@@ -39,7 +39,7 @@ def main():
     
     # grs.fdr = false_discovery_control(grs.pvalue, method="bh")
     grs = grs[grs.Value > -np.log10(args.fdr)]
-    grs = grs.extend(5)
+    # grs = grs.extend(5)
     grs = grs.merge()
 
     logging.info(f"Total of {len(grs)} footprints")

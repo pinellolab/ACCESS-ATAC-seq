@@ -125,28 +125,15 @@ def main():
         exp_wig_filename, "w"
     ) as exp_f, open(bc_wig_filename, "w") as bc_f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
-            _start = start - extend - args.smooth_window // 2
-            _end = end + extend + args.smooth_window // 2
+            _start = start - extend 
+            _end = end + extend
 
             signal_obs = np.array(bw_obs.values(chrom, _start, _end))
             signal_exp = np.array(bw_exp.values(chrom, _start, _end))
 
-            # smooth the observed and expected signal by moving average
-            w = np.ones(args.smooth_window)
-            signal_obs_smooth = np.convolve(
-                w / w.sum(), signal_obs, mode="valid")
-            signal_exp_smooth = np.convolve(
-                w / w.sum(), signal_exp, mode="valid")
-
-            # normalize the signal by the 99-th quantile
-            signal_obs_norm = signal_obs_smooth / \
-                np.quantile(signal_obs_smooth, 0.99)
-            signal_exp_norm = signal_exp_smooth / \
-                np.quantile(signal_exp_smooth, 0.99)
-
             # compute footprint score per-nucleotide
             obs_fp_scores = compute_fp_score(
-                signal=signal_obs_norm,
+                signal=signal_obs,
                 peak_len=end - start,
                 extend=extend,
                 fp_window=args.fp_window,
@@ -158,7 +145,7 @@ def main():
             # To do this, we randomly shuffle the input signal, and then compute the
             # footprint score again.
             exp_fp_scores = compute_fp_score(
-                signal=signal_exp_norm,
+                signal=signal_exp,
                 peak_len=end - start,
                 extend=extend,
                 fp_window=args.fp_window,
@@ -166,7 +153,7 @@ def main():
             )
 
             bc_fp_score = obs_fp_scores - exp_fp_scores
-            
+
             obs_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             obs_f.write("\n".join(str(e) for e in obs_fp_scores))
             obs_f.write("\n")
@@ -174,16 +161,18 @@ def main():
             exp_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             exp_f.write("\n".join(str(e) for e in exp_fp_scores))
             exp_f.write("\n")
-            
+
             bc_f.write(f"fixedStep chrom={chrom} start={start+1} step=1\n")
             bc_f.write("\n".join(str(e) for e in bc_fp_score))
             bc_f.write("\n")
 
     # convert to bigwig file
-    sp.run(["wigToBigWig", obs_wig_filename, args.chrom_size_file, obs_bw_filename])
-    sp.run(["wigToBigWig", exp_wig_filename, args.chrom_size_file, exp_bw_filename])
+    sp.run(["wigToBigWig", obs_wig_filename,
+           args.chrom_size_file, obs_bw_filename])
+    sp.run(["wigToBigWig", exp_wig_filename,
+           args.chrom_size_file, exp_bw_filename])
     sp.run(["wigToBigWig", bc_wig_filename, args.chrom_size_file, bc_bw_filename])
-    
+
     os.remove(obs_wig_filename)
     os.remove(exp_wig_filename)
     os.remove(bc_wig_filename)
