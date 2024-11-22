@@ -49,7 +49,6 @@ def main():
     
     logging.info(f"Total of {len(grs)} regions")
 
-    data = {}
     for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):
         signal = list()
         
