@@ -77,7 +77,7 @@ def main():
 
     infile.close()
     outfile.close()
-    logging.info(f"Done!")
+    logging.info("Done!")
 
 if __name__ == "__main__":
     main()

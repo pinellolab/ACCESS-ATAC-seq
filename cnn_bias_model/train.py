@@ -213,7 +213,7 @@ def main():
 
         scheduler.step(valid_loss)
 
-    logging.info(f"Training finished")
+    logging.info("Training finished")
 
 
 if __name__ == "__main__":

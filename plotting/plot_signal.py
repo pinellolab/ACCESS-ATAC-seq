@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore")
 
 import os
 import numpy as np
+import pandas as pd
 import argparse
 import pyranges as pr
 import pysam
@@ -50,14 +51,14 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--peak_file",
+        "--bed_file",
         type=str,
         default=None,
         help=("BED file containing genomic regions for plotting. \n" "Default: None"),
     )
 
     parser.add_argument(
-        "--extend", type=int, default=50, help=("Extend the regions. Default: 100")
+        "--extend", type=int, default=500, help=("Extend the regions. Default: 100")
     )
 
     parser.add_argument(
@@ -123,12 +124,12 @@ def get_pwm(fasta, grs):
 def main():
     args = parse_args()
 
-    logging.info(f"Loading genomic regions from {args.motif_file}")
-    grs = pr.read_bed(args.motif_file)
+    logging.info(f"Loading genomic regions from {args.bed_file}")
+    grs = pr.read_bed(args.bed_file)
 
-    if args.peak_file:
-        grs_peaks = pr.read_bed(args.peak_file)
-        grs = grs.overlap(grs_peaks, strandedness=False, invert=False)
+    # if args.peak_file:
+    #     grs_peaks = pr.read_bed(args.peak_file)
+    #     grs = grs.overlap(grs_peaks, strandedness=False, invert=False)
 
     logging.info(f"Total of {len(grs)} regions")
 
@@ -142,7 +143,7 @@ def main():
     bw = pyBigWig.open(args.bw_file)
     fasta = pysam.FastaFile(args.ref_fasta)
 
-    logging.info(f"Generating signal and pwm")
+    logging.info("Generating signal and pwm")
     signal = get_signal(bw=bw, grs=grs)
     pwm = get_pwm(fasta=fasta, grs=grs)
 
@@ -154,7 +155,7 @@ def main():
     x = np.linspace(start, end, num=window_size)
 
     plt.close("all")
-    fig, ax = plt.subplots(figsize=(4, 5))
+    fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(x, signal, color="#4daf4a")
 
     ax.text(
@@ -195,8 +196,11 @@ def main():
     ax.set_yticks([])
     fig.tight_layout()
 
-    output_filename = os.path.join(args.out_dir, "{}.pdf".format(args.out_name))
+    output_filename = os.path.join(args.out_dir, "{}.png".format(args.out_name))
     plt.savefig(output_filename)
+    
+    df = pd.DataFrame(data={"signal": signal, "position":range(-args.extend, args.extend)})
+    df.to_csv(f"{args.out_dir}/{args.out_name}.csv", index=False)
 
 
 if __name__ == "__main__":

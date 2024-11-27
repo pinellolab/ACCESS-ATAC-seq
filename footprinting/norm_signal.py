@@ -62,7 +62,7 @@ def main():
     exp_bw_filename = os.path.join(
         args.out_dir, "{}.exp.bw".format(args.out_name))
 
-    logging.info(f"Calculating footprint score per-nucleotide")
+    logging.info("Calculating footprint score per-nucleotide")
 
     with open(obs_wig_filename, "w") as obs_f, open(
         exp_wig_filename, "w"
@@ -102,7 +102,7 @@ def main():
     os.remove(obs_wig_filename)
     os.remove(exp_wig_filename)
 
-    logging.info(f"Done!")
+    logging.info("Done!")
 
 
 if __name__ == "__main__":

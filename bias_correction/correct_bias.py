@@ -27,39 +27,13 @@ def parse_args():
     # Required parameters
     parser.add_argument("--bw_raw", type=str, default=None)
     parser.add_argument("--bw_bias", type=str, default=None)
-    parser.add_argument(
-        "--peak_file",
-        type=str,
-        default=None,
-        help=(
-            "BED file containing genomic regions for generating signal. \n"
-            "Default: None"
-        ),
-    )
-    parser.add_argument("--peak_extend", type=int, default=100)
-    parser.add_argument("--window", type=int, default=101)
+    parser.add_argument("--bed_file", type=str, default=None)
+    parser.add_argument("--extend", type=int, default=100)
+    parser.add_argument("--window", type=int, default=11)
     parser.add_argument("--pseudo_count", type=float, default=1)
-    parser.add_argument(
-        "--out_dir",
-        type=str,
-        default=None,
-        help=(
-            "If specified all output files will be written to that directory. \n"
-            "Default: the current working directory"
-        ),
-    )
-    parser.add_argument(
-        "--out_name",
-        type=str,
-        default=None,
-        help=("Names for output file. Default: counts"),
-    )
-    parser.add_argument(
-        "--chrom_size_file",
-        type=str,
-        default=None,
-        help="File including chromosome size. Default: None",
-    )
+    parser.add_argument("--out_dir", type=str, default=None)
+    parser.add_argument("--out_name", type=str, default=None)
+    parser.add_argument("--chrom_size_file", type=str, default=None)
 
     return parser.parse_args()
 
@@ -68,22 +42,21 @@ def main():
     args = parse_args()
 
     # read chromosome size as PyRanges object
-    df = pd.read_csv(args.chrom_size_file, header=False)
+    df = pd.read_csv(args.chrom_size_file, header=None, index_col=None, sep="\t")
     df.columns = ["Chromosome", "End"]
     df["Start"] = 0
     df = df[["Chromosome", "Start", "End"]]
     df["End"] = df["End"] - 1
     chromsizes = pr.from_dict(df)
     
-    if args.peak_file:
-        logging.info(f"Loading genomic regions from {args.peak_file}")
-        grs = pr.read_bed(args.peak_file)
-        grs = grs.extend(args.peak_extend)
+    if args.bed_file:
+        logging.info(f"Loading genomic regions from {args.bed_file}")
+        grs = pr.read_bed(args.bed_file)
+        grs = grs.extend(args.extend)
         grs = grs.merge()
 
         # make sure regions are not out-of-bound of chromosome size
         grs = pr.gf.genome_bounds(grs, chromsizes, clip=True)
-        
     else:
         # use whole genome
         grs = chromsizes
@@ -101,7 +74,9 @@ def main():
     exp_bw_filename = f"{args.out_dir}/{args.out_name}.exp.bw"
     norm_bw_filename = f"{args.out_dir}/{args.out_name}.norm.bw"
 
-    half_window = args.window // 2
+    half_window = int(args.window // 2)
+    
+    print(half_window)
 
     with open(exp_wig_filename, "w") as exp_f, open(norm_wig_filename, "w") as norm_f:
         for chrom, start, end in zip(grs.Chromosome, grs.Start, grs.End):

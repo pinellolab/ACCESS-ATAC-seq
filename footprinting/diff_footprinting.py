@@ -2,7 +2,8 @@ import os
 import pyBigWig
 import pyranges as pr
 import numpy as np
-
+import pandas as pd
+import matplotlib.pyplot as plt
 import argparse
 import logging
 import subprocess as sp
@@ -59,7 +60,7 @@ def get_signal(arguments):
         signal[i] = _signal
 
     signal[np.isnan(signal)] = 0
-    signal = np.mean(signal, axis=0)
+    signal = np.sum(signal, axis=0)
 
     return signal
     
@@ -73,8 +74,93 @@ def compute_factors(signals):
 
     return factors
 
+def output_profiles(mpbs_name_list, signals, conditions, out_dir):
+    for i, condition in enumerate(conditions):
+        for j, mpbs_name in enumerate(mpbs_name_list):
+            df = pd.DataFrame(data={'signal': signals[i][j]})
+            df.to_csv(f"{out_dir}/{condition}_{mpbs_name}.csv")
+            # with open(output_filename, "w") as f:
+            #     f.write("\t".join(map(str, signals[i][j])) + "\n")
+
+def output_lineplot(arguments):
+    (mpbs_name, mpbs_num, signals, conditions, out_dir, window_size, colors) = arguments
+    mpbs_name = mpbs_name.replace("(", "_").replace(")", "")
+
+    # output signal
+    # output_filename = os.path.join(out_dir, "{}.txt".format(mpbs_name))
+    # with open(output_filename, "w") as f:
+    #     f.write("\t".join(conditions) + "\n")
+    #     for i in range(window_size):
+    #         res = []
+    #         for j, condition in enumerate(conditions):
+    #             res.append(signals[j][i])
+
+    #         f.write("\t".join(map(str, res)) + "\n")
+
+    # # to create a motif loge, we only use A, C, G, T
+    # pwm = {k: pwm[k] for k in ('A', 'C', 'G', 'T')}
+    # pwm = pd.DataFrame(data=pwm)
+    # pwm = pwm.add(1)
+    # pwm_prob = (pwm.T / pwm.T.sum()).T
+    # pwm_prob_log = np.log2(pwm_prob)
+    # pwm_prob_log = pwm_prob_log.mul(pwm_prob)
+    # info_content = pwm_prob_log.T.sum() + 2
+    # icm = pwm_prob.mul(info_content, axis=0)
+
+    start = -(window_size // 2)
+    end = (window_size // 2) - 1
+    x = np.linspace(start, end, num=window_size)
+
+    plt.close('all')
+    fig, ax = plt.subplots()
+    for i, condition in enumerate(conditions):
+        ax.plot(x, signals[i], color=colors[i], label=condition)
+
+    ax.text(0.15, 0.9, 'n = {}'.format(mpbs_num), 
+            verticalalignment='bottom', 
+            horizontalalignment='right',
+            transform=ax.transAxes, 
+            fontweight='bold')
+
+    ax.xaxis.set_ticks_position('bottom')
+    ax.yaxis.set_ticks_position('left')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_position(('outward', 15))
+    ax.tick_params(direction='out')
+    ax.set_xticks([start, 0, end])
+    ax.set_xticklabels([str(start), 0, str(end)])
+    min_signal = np.min(signals)
+    max_signal = np.max(signals)
+    ax.set_yticks([min_signal, max_signal])
+    ax.set_yticklabels([str(round(min_signal, 3)), 
+                        str(round(max_signal, 3))], rotation=90)
+
+    ax.set_title(mpbs_name, fontweight='bold')
+    ax.set_xlim(start, end)
+    ax.set_ylim([min_signal, max_signal])
+    ax.legend(loc="upper right", frameon=False)
+    ax.spines['bottom'].set_position(('outward', 70))
+
+    # ax = plt.axes([0.105, 0.085, 0.85, .2])
+    # logo = logomaker.Logo(icm, ax=ax, show_spines=False, baseline_width=0)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    fig.tight_layout()
+
+    output_filename = os.path.join(out_dir, "{}.png".format(mpbs_name))
+    plt.savefig(output_filename)
+
+
 def main():
     args = parse_args()
+
+    colors = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33", "#a65628", "#f781bf",
+              "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f", "#e5c494", "#b3b3b3",
+              "#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3", "#fdb462", "#b3de69", "#fccde5",
+              "#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#e6ab02", "#a6761d", "#666666",
+              "#7fc97f", "#beaed4", "#fdc086", "#ffff99", "#386cb0", "#f0027f", "#bf5b17", "#666666"]
+
 
     bw_files = args.bw_files.strip().split(",")
     mpbs_files = args.mpbs_files.strip().split(",")
@@ -93,7 +179,16 @@ def main():
     
     mpbs.sort()
     mpbs_name_list = list(set(mpbs.get_names()))
-    signals = np.zeros(shape=(len(conditions), len(mpbs_name_list), args.window_size), dtype=np.float32)
+    # for test
+    # mpbs_name_list = mpbs_name_list[:50]
+    logging.info(f"Number of TFs: {len(mpbs_name_list)}")
+    
+    signals = np.zeros(shape=(len(conditions), len(mpbs_name_list), args.window_size), 
+                       dtype=np.float32)
+    
+    motif_len = list()
+    motif_num = list()
+    motif_pwm = list()
     
     for i, condition in enumerate(conditions):
         logging.info(f"Generate signal for {condition}")
@@ -107,6 +202,8 @@ def main():
                 arguments = (bw_files[i], mpbs_regions, args.window_size)
                 arguments_list.append(arguments)
                 
+                motif_num.append(len(mpbs_regions))
+                
             res = pool.map(get_signal, arguments_list)
             signals[i] = np.array(res)
             
@@ -114,6 +211,23 @@ def main():
     factors = compute_factors(signals)
     
     print(factors)
+    
+    # normalize signals by factor and number of motifs
+    for i in range(len(conditions)):
+        for j in range(len(mpbs_name_list)):
+            signals[i, j, :] = signals[i, j, :] / (factors[i] * motif_num[j])
+    
+    logging.info("Save signal")
+    output_profiles(mpbs_name_list, signals, conditions, args.out_dir)
+    
+    logging.info("Plot figure")
+    for i, mpbs_name in enumerate(mpbs_name_list):
+        output_lineplot((mpbs_name, 
+                        motif_num[i], 
+                        signals[:, i, :], 
+                        conditions, 
+                        args.out_dir,
+                        args.window_size, colors))
     
     logging.info("Done!")
 
