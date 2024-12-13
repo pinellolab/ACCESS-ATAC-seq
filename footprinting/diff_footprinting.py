@@ -1,14 +1,12 @@
 import os
 import pyBigWig
-import pyranges as pr
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import argparse
 import logging
-import subprocess as sp
 import warnings
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 from rgt.GenomicRegionSet import GenomicRegionSet
 
 warnings.filterwarnings("ignore")
@@ -27,7 +25,6 @@ def parse_args():
 
     # Required parameters
     parser.add_argument("--bw_files", type=str, default=None)
-    
     parser.add_argument("--mpbs-files", metavar='FILE1,FILE2...', type=str,
                         help='Predicted motif binding sites for each condition.'
                              'Files should be separated with comma.')

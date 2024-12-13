@@ -1,0 +1,3 @@
+[submodule "ACCESS_single_allele"]
+	path = ACCESS_single_allele
+	url = git@github.com:TYTYBU/ACCESS_single_allele.git

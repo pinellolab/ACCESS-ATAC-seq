@@ -23,7 +23,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-def get_signal(bw, grs):
+def get_signal(grs, bw_file, label) -> pd.DataFrame:
+    bw = pyBigWig.open(bw_file)
+    
     window_size = grs.End.values[0] - grs.Start.values[0]
     signal = np.zeros(shape=(len(grs), window_size))
 
@@ -32,29 +34,23 @@ def get_signal(bw, grs):
 
     signal[np.isnan(signal)] = 0
     signal = np.mean(signal, axis=0)
+    
+    df = pd.DataFrame(data={"position":range(-100, 100), "signal": signal, "data": label})
 
-    return signal
+    return df
 
-def get_all_signal(grs):
+def get_all_signal(grs, bw_files: list[str], labels: list[str]) -> pd.DataFrame:
     # extend regions
     mid = (grs.End + grs.Start) // 2
     grs.Start = mid - 100
     grs.End = mid + 100
-
-    bw = pyBigWig.open('/data/pinello/PROJECTS/2023_10_ACCESS/results/44_tfbs_pred/03_bam_to_bw/K562_ATAC.bw')
-    signal_atac = get_signal(bw=bw, grs=grs)
     
-    bw = pyBigWig.open('/data/pinello/PROJECTS/2023_10_ACCESS/results/44_tfbs_pred/03_bam_to_bw/K562_ACCESS_ATAC_10M_cutting_counts.bw')
-    signal_access_atac_tn5 = get_signal(bw=bw, grs=grs)
+    df_list = []
+    for bw_file, label in zip(bw_files, labels):
+        df = get_signal(grs=grs, bw_file=bw_file, label=label)
+        df_list.append(df)
     
-    bw = pyBigWig.open('/data/pinello/PROJECTS/2023_10_ACCESS/results/44_tfbs_pred/03_bam_to_bw/K562_ACCESS_ATAC_10M_editing_counts.bw')
-    signal_access_atac_ddd1 = get_signal(bw=bw, grs=grs)
-    
-    df1 = pd.DataFrame(data={"position":range(-100, 100), "signal": signal_atac, "data": "atac"})
-    df2 = pd.DataFrame(data={"position":range(-100, 100), "signal": signal_access_atac_tn5, "data": "access_atac_tn5"})
-    df3 = pd.DataFrame(data={"position":range(-100, 100), "signal": signal_access_atac_ddd1, "data": "access_atac_ddd1"})
-    
-    df = pd.concat([df1, df2, df3])
+    df = pd.concat(df_list)
     
     return df
 
@@ -65,21 +61,11 @@ def parse_args():
     )
 
     # Required parameters
-    parser.add_argument(
-        "--bed_file",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--outdir",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--name",
-        type=str,
-        default="counts",
-    )
+    parser.add_argument("--bw_files", type=str, default=None)
+    parser.add_argument("--labels", type=str, default=None)
+    parser.add_argument("--bed_file", type=str, default=None)
+    parser.add_argument("--out_dir", type=str, default=None)
+    parser.add_argument("--out_name", type=str, default="counts")
 
     return parser.parse_args()
 
@@ -89,17 +75,24 @@ def main():
 
     logging.info(f"Reading regions from {args.bed_file}")
     grs = pr.read_bed(args.bed_file)
-
-    df = get_all_signal(grs)
     
+    # get bw files
+    bw_files = args.bw_files.strip().split(",")
+    labels = args.labels.strip().split(",")
+
+    df = get_all_signal(grs, bw_files, labels)
+    
+    colors = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33", "#a65628", "#f781bf",
+              "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854"]
+
     fig, ax = plt.subplots(1, 1, figsize=[6, 4])
-    sns.lineplot(data=df, x="position", y="signal", hue="data")
-    plt.legend(loc='upper right')
-    plt.title(args.name)
+    sns.lineplot(data=df, x="position", y="signal", hue="data", ax=ax, palette=colors)
+    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    plt.title(args.out_name)
 
     fig.tight_layout()
-    plt.savefig(f'{args.outdir}/{args.name}.png')
-    df.to_csv(f"{args.outdir}/{args.name}.csv", index=False)
+    plt.savefig(f'{args.out_dir}/{args.out_name}.png')
+    df.to_csv(f"{args.out_dir}/{args.out_name}.csv", index=False)
 
     logging.info("Done")
 

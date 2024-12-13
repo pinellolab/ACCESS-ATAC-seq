@@ -61,7 +61,7 @@ def main():
     df = pd.DataFrame(data=barcode_dict).transpose()
     df['total_reads'] = df['non_edited_reads'] + df['edited_reads']
     df.to_csv(f'{args.out_dir}/{args.out_name}.csv')
-    logging.info(f"Done!")
+    logging.info("Done!")
 
 
 if __name__ == "__main__":
