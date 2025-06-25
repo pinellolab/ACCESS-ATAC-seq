@@ -2,17 +2,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-import os
 import argparse
 import pyranges as pr
-import pysam
 import logging
 import pandas as pd
 import numpy as np
 import pyBigWig
-import logomaker
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 import seaborn as sns
 
 # plt.rcParams['pdf.fonttype'] = 42

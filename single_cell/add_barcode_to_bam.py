@@ -36,13 +36,18 @@ def main():
     logging.info("Adding barcode to bam file")
     iter = infile.fetch(until_eof=True)
     for read in iter:
-        barcode = read.qname.split("_")[0]
+        barcode = read.qname.split("_")[-1]  # Assuming barcode is the last part of qname
+        if not barcode:
+            logging.warning(f"Read {read.qname} does not have a valid barcode.")
+            continue
+
+        # Set the barcode tag
         read.set_tag(args.bc_tag, barcode, replace=False)
         outfile.write(read)
 
     infile.close()
     outfile.close()
-    logging.info(f"Done!")
+    logging.info("Done!")
 
 
 if __name__ == "__main__":
